@@ -8,27 +8,56 @@ library(stringr)
 library(dplyr)
 
 
-for (col in colnames(data)) {
-  print(unique(data[[col]]))
-}
+# ------------------------------------------------------------------------------
+# 1. LISTE DES VALEURS À CONVERTIR EN NA
+# ------------------------------------------------------------------------------
+mots_vides <- c(
+  "inconnu", "inconnue", "sans", "xx", "/", "restriction de gabarit non précisée", 
+  "accessibilité inconnue", "neant", "néant", "non concerné", "non communiqué", 
+  "non précisé", "non renseigné", "unknown", "n/a", "na", "none", "null", 
+  "-", "?", "", "aucune observations", "aucune observation"
+)
+
+# ------------------------------------------------------------------------------
+# 2. NETTOYAGE GLOBAL ET HARMONISATION EN UN SEUL PIPELINE
+# ------------------------------------------------------------------------------
+df <- df %>%
+  # Étape A : Nettoyage global de TOUTES les colonnes texte
+  mutate(across(where(is.character), ~ {
+    texte_nettoye <- str_trim(.x)
+    if_else(str_to_lower(texte_nettoye) %in% mots_vides, NA_character_, texte_nettoye)
+  })) %>%
+  
+  # Étape B : Harmonisation spécifique de la colonne 'restriction_gabarit'
+  mutate(
+    restriction_gabarit = case_when(
+      # Cas 1 : Si la valeur est déjà un NA (grâce au nettoyage de l'étape A)
+      is.na(restriction_gabarit) ~ NA_character_,
+      
+      # Cas 2 : S'il n'y a pas de restriction -> "FALSE"
+      str_detect(str_to_lower(restriction_gabarit), "aucune|pas de restriction|aucun|ras|^non$|sans restriction") ~ "FALSE",      
+      
+      # Cas 3 : Extraction et formatage de la dimension numérique (ex: "1,5" -> "1.5m")
+      str_detect(restriction_gabarit, "[0-9]") ~ {
+        format_standard <- str_replace_all(str_to_lower(restriction_gabarit), "([0-9]+)[,m]([0-9]+)", "\\1.\\2")
+        valeur_num      <- str_extract(format_standard, "[0-9]+(\\.[0-9]+)?")
+        paste0(valeur_num, "m")
+      },
+      
+      # Cas 4 : Sécurité (on garde la valeur d'origine si aucun cas ne correspond)
+      .default = restriction_gabarit
+    )
+  )
+
+# ------------------------------------------------------------------------------
+# 3. VÉRIFICATION DU RÉSULTAT
+# ------------------------------------------------------------------------------
+# Une seule ligne simple pour voir les valeurs uniques de chaque colonne
+lapply(df, unique)
+
+# Aperçu visuel dans RStudio
 
 
-# on debat pour Restriction de gabarit non précisée
-mots=c("inconnu", "inconnue","Restriction de gabarit non précisée", "accessibilité inconnue","Accessibilité inconnue","Inconnue","NEANT","Néant","non concerné", "Non communiqué","non précisé","non renseigné","Non renseigné","unknown", "n/a", "na", "none", "null", "-", "?", "","Non communiqué","Non concerné ","aucune observations","aucune observation")
-#gere aucune
-print(mots)
-
-for (col in colnames(data)) {
-  #evite les chiffre
-  if (is.character(data[[col]])) {
-    
-    # texte brut avec [[col]] et plus d'espace avec str_t
-    x = str_trim(data[[col]])
-    # On remplace par NA 
-    data[[col]][x %in% mots] <- NA_character_
-    
-  }
-}
 #trouver sur le site du gouv https://doc.transport.data.gouv.fr/type-donnees/infrastructures-de-recharge-de-vehicules-electriques-irve/beta-base-nationale-irve-statique
 liste_bool=c("prise_type_ef","prise_type_2","prise_type_combo_css","prise_type_combo_ccs","prise_type_chademo","prise_type_autre","gratuit","paiement_acte","paiement_cb","paiement_autre","reservation","station_deux_roues","cable_t2_attache", "consolidated_is_lon_lat_correct")
 
@@ -43,7 +72,7 @@ for (col in liste_bool) {
     data[[col]][t_minus == "false"] = FALSE
   }
 }
-
+View(df)
 
 
 
