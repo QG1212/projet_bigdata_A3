@@ -29,6 +29,21 @@ for (col in colnames(data)) {
     
   }
 }
+#trouver sur le site du gouv https://doc.transport.data.gouv.fr/type-donnees/infrastructures-de-recharge-de-vehicules-electriques-irve/beta-base-nationale-irve-statique
+liste_bool=c("prise_type_ef","prise_type_2","prise_type_combo_css","prise_type_combo_ccs","prise_type_chademo","prise_type_autre","gratuit","paiement_acte","paiement_cb","paiement_autre","reservation","station_deux_roues","cable_t2_attache", "consolidated_is_lon_lat_correct")
+
+for (col in liste_bool) {
+  #evite les chiffre
+  if (is.character(data[[col]])){  
+    
+    t_minus =tolower(data[[col]])
+    data[[col]][t_minus == "true"] = TRUE
+    
+    # Oremplace 
+    data[[col]][t_minus == "false"] = FALSE
+  }
+}
+
 
 
 
