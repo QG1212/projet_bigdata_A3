@@ -1,4 +1,4 @@
-data <- read.csv("C:/Users/hecto/Music/IRVE (1).csv")
+data <- read.csv("C:/Quentin/Ecole/ISEN/A3/IRVE.csv")
 
 install.packages("stringr") 
 install.packages("dplyr")
@@ -19,51 +19,71 @@ data <- data[!duplicated(data[["id_pdc_itinerance"]]), ]
 
 
 
+# ------------------------------------------------------------------------------
+# Fonctionnalité 1
+# ------------------------------------------------------------------------------
 
-# ------------------------------------------------------------------------------
-# 1. LISTE DES VALEURS À CONVERTIR EN NA
-# ------------------------------------------------------------------------------
-mots_vides <- c("sans", "xx" ,"inconnu", "inconnue","Inconnu","0000","Restriction de gabarit non précisée","restriction gabarit inconnue", "Non concerné","no information","Restriction de gabarit non pr\u008ecis\u008ee","Restriction de gabarit non prÃ©cisÃ©e","restriction gabarit inconnues","accessibilité inconnue","Accessibilité inconnue","Inconnue","NEANT","Néant","non concerné", "Non communiqué","non précisé","non renseigné","Non renseigné","unknown", "n/a", "na", "none", "null", "-", "?", "","/","Non communiqué","Non concerné ","aucune observations","aucune observation")
+# Mots considérés comme non pertinents
+mots_vides <- c(
+  "inconnu", "inconnue", "sans", "xx", "/", "restriction de gabarit non précisée", 
+  "accessibilité inconnue", "neant", "néant", "non concerné", "non communiqué", 
+  "non précisé", "non renseigné", "unknown", "n/a", "na", "none", "null", 
+  "-", "?", "", "aucune observations", "aucune observation"
+)
 
-
-# ------------------------------------------------------------------------------
-# 2. NETTOYAGE GLOBAL ET HARMONISATION EN UN SEUL PIPELINE
-# ------------------------------------------------------------------------------
-data <- data %>%
-  # Étape A : Nettoyage global de TOUTES les colonnes texte
-  mutate(across(where(is.character), ~ {
-    texte_nettoye <- str_trim(.x)
-    if_else(str_to_lower(texte_nettoye) %in% mots_vides, NA_character_, texte_nettoye)
-  })) %>%
+# Règle de nettoyage de donnée
+nettoyer_texte <- function(colonne_texte) {
+  # Enlève les epaces en trop
+  texte_propre <- str_trim(colonne_texte)
   
-  # Étape B : Harmonisation spécifique de la colonne 'restriction_gabarit'
-  mutate(
-    restriction_gabarit = case_when(
-      # Cas 1 : Si la valeur est déjà un NA (grâce au nettoyage de l'étape A)
-      is.na(restriction_gabarit) ~ NA_character_,
-      
-      # Cas 2 : S'il n'y a pas de restriction -> "FALSE"
-      str_detect(str_to_lower(restriction_gabarit), "aucune|pas de restriction|aucun|ras|^non$|sans restriction") ~ "FALSE",      
-      
-      # Cas 3 : Extraction et formatage de la dimension numérique (ex: "1,5" -> "1.5m")
-      str_detect(restriction_gabarit, "[0-9]") ~ {
-        format_standard <- str_replace_all(str_to_lower(restriction_gabarit), "([0-9]+)[,m]([0-9]+)", "\\1.\\2")
-        valeur_num      <- str_extract(format_standard, "[0-9]+(\\.[0-9]+)?")
-        paste0(valeur_num, "m")
-      },
-      
-      # Cas 4 : Sécurité (on garde la valeur d'origine si aucun cas ne correspond)
-      .default = restriction_gabarit
-    )
+  # Vérifie si le mot fait parti de la liste ci-dessus
+  if_else(
+    is.element(str_to_lower(texte_propre), mots_vides), 
+    NA_character_, 
+    texte_propre
   )
+}
 
-# ------------------------------------------------------------------------------
-# 3. VÉRIFICATION DU RÉSULTAT
-# ------------------------------------------------------------------------------
-# Une seule ligne simple pour voir les valeurs uniques de chaque colonne
+# Nouveau data
+data <- mutate(
+  # arg 1 : notre jeu de donnée
+  data,
+  
+  # arg 2 : applique la fct de nettoyage au colonne texte
+  across(where(is.character), nettoyer_texte),
+  
+  # arg 3 : Harmonisation des colonnes
+  restriction_gabarit = case_when(
+    
+    # Confirme que la valeur est Na
+    is.na(restriction_gabarit) ~ NA_character_,
+    
+    # Cherche les mots clé et remplace par false
+    str_detect(str_to_lower(restriction_gabarit), "aucune|pas de restriction|aucun|ras|^non$|sans restriction") ~ "FALSE",     
+    
+    # Cherche des chiffres
+    str_detect(restriction_gabarit, "[0-9]") ~ {
+      
+      # Remplace les virgules et ajoute un 'm' derière le chiffre
+      format_standard <- str_replace_all(str_to_lower(restriction_gabarit), "([0-9]+)[,m]([0-9]+)", "\\1.\\2")
+      
+      # Extrait partie numérique
+      valeur_num<- str_extract(format_standard, "[0-9]+(\\.[0-9]+)?")
+      
+      # concaténation du chiffre et du m
+      paste0(valeur_num, "m")
+    },
+    
+    # Pas de changement
+    .default = restriction_gabarit
+  )
+)
+
+# Liste les valeurs uniques
 lapply(data, unique)
 
-# Aperçu visuel dans RStudio
+# Visualisation
+View(data)
 
 
 #trouver sur le site du gouv https://doc.transport.data.gouv.fr/type-donnees/infrastructures-de-recharge-de-vehicules-electriques-irve/beta-base-nationale-irve-statique
@@ -140,3 +160,107 @@ data_metropole_propre <- data %>%
   )
 
 View(data_metropole_propre)
+
+
+# ==============================================================================
+# FONCTIONNALITÉ 2 : VISUALISATION DES DONNÉES ET EXPORT PNG
+# ==============================================================================
+
+# Chargement des bibliothèques nécessaires pour le script
+library(dplyr)      
+library(ggplot2)    
+library(lubridate)  
+library(tidyr)      
+
+# Importation du jeu de données
+data <- read.csv("C:/Quentin/Ecole/ISEN/A3/IRVE.csv")
+
+
+# GRAPHIQUE 1 : Évolution du nombre de stations mises en service
+
+
+# Nouvelle colonne pour isoler des variables
+data_evolution <- mutate(
+  data, 
+  # Convertion texte -> format date
+  date_service = ymd(date_mise_en_service), 
+  # Force toutes les dates au premier jour de leur mois (pour grouper par mois)
+  annee_mois = floor_date(date_service, "month")
+)
+
+# On affiche selon cette nouvelle colonne
+data_evolution <- group_by(data_evolution, annee_mois)
+
+# On compte le nombre de lignes dans 'stations' pour chaque mois
+data_evolution <- summarise(data_evolution, nombre_stations = n())
+
+# On supprime les lignes avec mois incoonu
+data_evolution <- drop_na(data_evolution, annee_mois)
+
+
+# On crée plusieurs couche siur le graph avec le +
+
+# Initialisation du graphe avec x et y
+graph_evo <- ggplot(data_evolution, aes(x = annee_mois, y = nombre_stations)) +
+  
+  # Ligne bleu
+  geom_line(color = "#0072B2", linewidth = 1) +      
+  
+  # Point orange
+  geom_point(color = "#D55E00", size = 2) +          
+  
+  # Element textuel
+  labs(
+    title = "Évolution des mises en service de stations",
+    x = "Date (Mois et Année)",
+    y = "Nombre de nouvelles stations"
+  ) +
+  
+  # Style simple
+  theme_minimal()
+
+
+# Exportation sur l'ordi
+ggsave("1_evolution_stations.png", plot = graph_evo, width = 8, height = 5, bg = "white")
+
+
+# GRAPHIQUE 2 : Parts de marché des opérateurs (Diagramme à barres)
+
+# tab d'origine, on récupère les opérateurs
+data_operateurs <- group_by(data, nom_operateur)
+
+# Compte le nombre d'opérateur par station
+data_operateurs <- summarise(data_operateurs, nombre = n())
+
+# Tri par odre decroissant => avoir le plus grand 
+data_operateurs <- arrange(data_operateurs, desc(nombre))
+
+# Garde les 10 premiers
+data_operateurs <- slice_head(data_operateurs, n = 10)
+
+
+# ÉTAPE 2 : Création du graphique à barres
+
+# Initialisation des axes avec x et y 
+# reorder => prends le opérateurs mais les classes par la colonne nombre 
+graph_parts <- ggplot(data_operateurs, aes(x = reorder(nom_operateur, -nombre), y = nombre)) +
+  
+  # Berre verticale verte
+  geom_col(fill = "#009E73") + 
+  
+  # texte +titre
+  labs(
+    title = "Top 10 des opérateurs (Parts de marché en nb de stations)",
+    x = "Opérateur",
+    y = "Nombre de stations gérées"
+  ) +
+  
+  # Style simple
+  theme_minimal() +
+  
+  # Inclinaison à 45°pour faciliter la lecture
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+# Exportation du deuxième graphe
+ggsave("2_parts_marche_operateurs.png", plot = graph_parts, width = 8, height = 5, bg = "white")
