@@ -23,8 +23,8 @@ data <- data[!duplicated(data[["id_pdc_itinerance"]]), ]
 # ------------------------------------------------------------------------------
 # 1. LISTE DES VALEURS À CONVERTIR EN NA
 # ------------------------------------------------------------------------------
-mots_vides <- c(("sans", "xx" ,"inconnu", "inconnue","Inconnu","0000","Restriction de gabarit non précisée","restriction gabarit inconnue", "Non concerné","no information","Restriction de gabarit non pr\u008ecis\u008ee","Restriction de gabarit non prÃ©cisÃ©e","restriction gabarit inconnues","accessibilité inconnue","Accessibilité inconnue","Inconnue","NEANT","Néant","non concerné", "Non communiqué","non précisé","non renseigné","Non renseigné","unknown", "n/a", "na", "none", "null", "-", "?", "","/","Non communiqué","Non concerné ","aucune observations","aucune observation")
-)
+mots_vides <- c("sans", "xx" ,"inconnu", "inconnue","Inconnu","0000","Restriction de gabarit non précisée","restriction gabarit inconnue", "Non concerné","no information","Restriction de gabarit non pr\u008ecis\u008ee","Restriction de gabarit non prÃ©cisÃ©e","restriction gabarit inconnues","accessibilité inconnue","Accessibilité inconnue","Inconnue","NEANT","Néant","non concerné", "Non communiqué","non précisé","non renseigné","Non renseigné","unknown", "n/a", "na", "none", "null", "-", "?", "","/","Non communiqué","Non concerné ","aucune observations","aucune observation")
+
 
 # ------------------------------------------------------------------------------
 # 2. NETTOYAGE GLOBAL ET HARMONISATION EN UN SEUL PIPELINE
@@ -83,7 +83,7 @@ for (col in liste_bool) {
 View(data)
 
 
-trouver sur le site du gouv https://doc.transport.data.gouv.fr/type-donnees/infrastructures-de-recharge-de-vehicules-electriques-irve/beta-base-nationale-irve-statique
+#trouver sur le site du gouv https://doc.transport.data.gouv.fr/type-donnees/infrastructures-de-recharge-de-vehicules-electriques-irve/beta-base-nationale-irve-statique
 liste_bool=c("prise_type_ef","prise_type_2","prise_type_combo_css","prise_type_combo_ccs","prise_type_chademo","prise_type_autre","gratuit","paiement_acte","paiement_cb","paiement_autre","reservation","station_deux_roues","cable_t2_attache", "consolidated_is_lon_lat_correct")
 for (col in liste_bool) {
   #evite les chiffre
