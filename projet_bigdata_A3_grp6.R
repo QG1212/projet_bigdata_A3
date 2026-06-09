@@ -8,20 +8,28 @@ library(stringr)
 library(dplyr)
 
 
+#suppression
+
+data <- data[data[["id_pdc_itinerance"]] != "Non concerné", ]
+#trier par la plus recente
+data <- data[order(data[["date_maj"]], na.last = TRUE), ]
+#arder uniquement la première de chaque id_pdc_itinerance, revoie false si ne la jamais renconter , true si la rencontrer= suppr
+data <- data[!duplicated(data[["id_pdc_itinerance"]]), ]
+
+
+
+
+
 # ------------------------------------------------------------------------------
 # 1. LISTE DES VALEURS À CONVERTIR EN NA
 # ------------------------------------------------------------------------------
-mots_vides <- c(
-  "inconnu", "inconnue", "sans", "xx", "/", "restriction de gabarit non précisée", 
-  "accessibilité inconnue", "neant", "néant", "non concerné", "non communiqué", 
-  "non précisé", "non renseigné", "unknown", "n/a", "na", "none", "null", 
-  "-", "?", "", "aucune observations", "aucune observation"
+mots_vides <- c(("sans", "xx" ,"inconnu", "inconnue","Inconnu","0000","Restriction de gabarit non précisée","restriction gabarit inconnue", "Non concerné","no information","Restriction de gabarit non pr\u008ecis\u008ee","Restriction de gabarit non prÃ©cisÃ©e","restriction gabarit inconnues","accessibilité inconnue","Accessibilité inconnue","Inconnue","NEANT","Néant","non concerné", "Non communiqué","non précisé","non renseigné","Non renseigné","unknown", "n/a", "na", "none", "null", "-", "?", "","/","Non communiqué","Non concerné ","aucune observations","aucune observation")
 )
 
 # ------------------------------------------------------------------------------
 # 2. NETTOYAGE GLOBAL ET HARMONISATION EN UN SEUL PIPELINE
 # ------------------------------------------------------------------------------
-df <- df %>%
+data <- data %>%
   # Étape A : Nettoyage global de TOUTES les colonnes texte
   mutate(across(where(is.character), ~ {
     texte_nettoye <- str_trim(.x)
@@ -53,7 +61,7 @@ df <- df %>%
 # 3. VÉRIFICATION DU RÉSULTAT
 # ------------------------------------------------------------------------------
 # Une seule ligne simple pour voir les valeurs uniques de chaque colonne
-lapply(df, unique)
+lapply(data, unique)
 
 # Aperçu visuel dans RStudio
 
@@ -72,7 +80,38 @@ for (col in liste_bool) {
     data[[col]][t_minus == "false"] = FALSE
   }
 }
-View(df)
+View(data)
+
+
+trouver sur le site du gouv https://doc.transport.data.gouv.fr/type-donnees/infrastructures-de-recharge-de-vehicules-electriques-irve/beta-base-nationale-irve-statique
+liste_bool=c("prise_type_ef","prise_type_2","prise_type_combo_css","prise_type_combo_ccs","prise_type_chademo","prise_type_autre","gratuit","paiement_acte","paiement_cb","paiement_autre","reservation","station_deux_roues","cable_t2_attache", "consolidated_is_lon_lat_correct")
+for (col in liste_bool) {
+  #evite les chiffre
+  if (is.character(data[[col]])){  
+    
+    
+    t_minus =tolower(data[[col]])
+    data[[col]][t_minus == "true"] = "1"
+    
+    # Oremplace 
+    data[[col]][t_minus == "false"] = "0" }
+  
+  
+}
+
+#retirer les 0 qui ne sont pas des false
+for (col in colnames(data)) {
+  if (!col %in% liste_bool) {
+    data[[col]][data[[col]] == 0] = NA
+  }
+}
+
+data$condition_acces <- ifelse(tolower(data$condition_acces) == "accès réservé", "accès réservé", "accès libre")
+data[["implantation_station"]][data[["implantation_station"]] == "Parking priv\u008e \u0088 usage public"] = "Parking privé à usage public"
+
+data[["implantation_station"]][data[["implantation_station"]] == "Parking priv\u008e r\u008eserv\u008e \u0088 la client\u008fle"] = "Parking privé réservé à la clientèle"
+
+
 
 
 
