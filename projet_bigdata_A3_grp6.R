@@ -1,27 +1,36 @@
 data <- read.csv("C:/Users/hecto/Music/IRVE (1).csv")
 
+install.packages("stringr") 
+install.packages("dplyr")
+install.packages("tidyverse") 
 library(tidyverse)
+library(stringr)
+library(dplyr)
+
 
 for (col in colnames(data)) {
   print(unique(data[[col]]))
 }
 
-mots=c("inconnu", "inconnue", "accessibilité inconnue","unknown", "n/a", "na", "none", "null", "-", "?", "")
+
+# on debat pour Restriction de gabarit non précisée
+mots=c("inconnu", "inconnue","Restriction de gabarit non précisée", "accessibilité inconnue","Accessibilité inconnue","Inconnue","NEANT","Néant","non concerné", "Non communiqué","non précisé","non renseigné","Non renseigné","unknown", "n/a", "na", "none", "null", "-", "?", "","Non communiqué","Non concerné ","aucune observations","aucune observation")
+#gere aucune
+print(mots)
+
 for (col in colnames(data)) {
-  x = str_trim(str_to_lower(as.character(df[[col]])))
-  df[[col]][x %in% mots_inconnus] <- NA
+  #evite les chiffre
+  if (is.character(data[[col]])) {
+    
+    # texte brut avec [[col]] et plus d'espace avec str_t
+    x = str_trim(data[[col]])
+    # On remplace par NA 
+    data[[col]][x %in% mots] <- NA_character_
+    
+  }
 }
 
-bool_cols <- c("prise_type_ef", "prise_type_2", "gratuit", "reservation")
 
-for (col in bool_cols) {
-  x <- str_trim(str_to_lower(as.character(df[[col]])))
-  df[[col]] <- case_when(
-    x == "true"  ~ "true",
-    x == "false" ~ "false",
-    .default = NA
-  )
-}
 
 library(dplyr)
 
