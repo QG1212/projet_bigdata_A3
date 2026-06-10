@@ -355,3 +355,55 @@ graph_prises <- ggplot(data_prises, aes(x = reorder(type_prise, -quantite), y = 
 ggsave("4_repartition_prises.png", plot = graph_prises, width = 8, height = 5, bg = "white")
 
 print("Les 4 graphiques ont été générés et sauvegardés en .png dans votre dossier de travail !")
+
+#---------------------------------------------------------------------------
+#tarification 
+
+library(stringr)
+library(data.table)
+
+#chargement de tarification et [[1]] permet de convertir directement le data.frame en un vecteur simple
+tarification <- fread("C:/Users/hecto/Music/IRVE (1).csv", select = "tarification", data.table = FALSE)[[1]]
+
+
+#extration des données, si gratuit -> 0 etc 
+extraire_prix_kwh <- function(texte) {
+  if (is.na(texte) || texte == "") return(NA_real_)
+  
+  # Rejets précoces
+  if (str_detect(texte, "inconnu|^nc$|non communiqu|^payant$|min(?:ute)?$|^http|fix")) {
+    return(NA_real_)
+  }
+  
+  # Cas de la gratuité explicite (0 EUR/kWh)
+  if (str_detect(texte, "\\b0[.,]?0*\\s*(eur.*)?/?kwh")) return(0.0)
+  
+  # Extraction des nombres
+  nombres <- str_extract_all(texte, "[0-9]+[.,]?[0-9]*")[[1]]
+  if (length(nombres) == 0) return(NA_real_)
+  
+  nums <- as.numeric(str_replace(nombres, ",", "."))
+  
+  # Conversion centimes -> euros
+  if (str_detect(texte, "c(?:t|ts?|ents?)\\s*/?\\s*kwh")) {
+    nums <- nums / 100
+  }
+  
+  # Filtrage des valeurs aberrantes (0.05€ à 3.00€ / kWh)
+  valides <- nums[nums >= 0.05 & nums <= 3.00]
+  if (length(valides) == 0) return(NA_real_)
+  
+  return(round(mean(valides), 4))
+}
+
+
+# 3. APPLICATION DU NETTOYAGE ET DE LA NORMALISATION
+data$tarification <- tarification |> 
+  str_to_lower() |> 
+  str_replace_all("€", "eur") |> 
+  str_replace_all("kw h", "kwh") |> 
+  str_replace_all("kw\\b", "kwh") |> 
+  str_trim() |> 
+  sapply(extraire_prix_kwh, USE.NAMES = FALSE) |> 
+  str_c(" €/kWh")
+
