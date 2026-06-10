@@ -266,6 +266,7 @@ graph_parts <- ggplot(data_operateurs, aes(x = reorder(nom_operateur, -nombre), 
 ggsave("2_parts_marche_operateurs.png", plot = graph_parts, width = 8, height = 5, bg = "white")
 
 #-----------------------------------------------------------------------
+#trie donnée pour carte
 
 data_sf <- data %>%
   mutate(
