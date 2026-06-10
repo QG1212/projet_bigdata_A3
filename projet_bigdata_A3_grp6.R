@@ -1,5 +1,17 @@
 data <- read.csv("C:/Quentin/Ecole/ISEN/A3/IRVE.csv")
 
+# install.packages("leaflet")
+# install.packages("leaflet.extras")
+# install.packages("sf")
+# install.packages("rnaturalearth")
+# install.packages("rnaturalearthdata")
+library(leaflet)
+library(leaflet.extras)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(data.table)
+
 install.packages("stringr") 
 install.packages("dplyr")
 install.packages("tidyverse") 
