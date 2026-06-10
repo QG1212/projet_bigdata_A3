@@ -188,6 +188,20 @@ library(tidyr)
 data <- read.csv("C:/Quentin/Ecole/ISEN/A3/IRVE.csv")
 
 
+# ==============================================================================
+# FONCTIONNALITÉ 2 : VISUALISATION DES DONNÉES ET EXPORT PNG
+# ==============================================================================
+
+# Chargement des bibliothèques nécessaires pour le script
+library(dplyr)      
+library(ggplot2)    
+library(lubridate)  
+library(tidyr)      
+
+# Importation du jeu de données
+data <- read.csv("C:/Quentin/Ecole/ISEN/A3/IRVE.csv")
+
+
 # GRAPHIQUE 1 : Évolution du nombre de stations mises en service
 
 
@@ -238,6 +252,7 @@ ggsave("1_evolution_stations.png", plot = graph_evo, width = 8, height = 5, bg =
 
 # GRAPHIQUE 2 : Parts de marché des opérateurs (Diagramme à barres)
 
+
 # tab d'origine, on récupère les opérateurs
 data_operateurs <- group_by(data, nom_operateur)
 
@@ -251,7 +266,7 @@ data_operateurs <- arrange(data_operateurs, desc(nombre))
 data_operateurs <- slice_head(data_operateurs, n = 10)
 
 
-# ÉTAPE 2 : Création du graphique à barres
+# Création du graphique à barres
 
 # Initialisation des axes avec x et y 
 # reorder => prends le opérateurs mais les classes par la colonne nombre 
@@ -277,24 +292,66 @@ graph_parts <- ggplot(data_operateurs, aes(x = reorder(nom_operateur, -nombre), 
 # Exportation du deuxième graphe
 ggsave("2_parts_marche_operateurs.png", plot = graph_parts, width = 8, height = 5, bg = "white")
 
-#-----------------------------------------------------------------------
-#trie donnée pour carte
+# Chargement de la librairie requise (à exécuter si ce n'est pas déjà fait plus haut)
+library(ggplot2)
 
-data_sf <- data %>%
-  mutate(
-    consolidated_latitude  = as.numeric(consolidated_latitude),
-    consolidated_longitude = as.numeric(consolidated_longitude)
-  ) %>%
-  #on prend que les lat et long qui existent
-  filter(!is.na(consolidated_latitude), !is.na(consolidated_longitude)) %>%
-  #on convertit le tableau en "Carte" (objet géographique)
-  st_as_sf(coords = c("consolidated_longitude", "consolidated_latitude"), crs = 4326, remove = FALSE)
 
-#telecharge le contour de la France + de la Corse
-france_frontiere <- ne_countries(scale = "medium", country = "France", returnclass = "sf") %>%
-  st_transform(crs = 4326) %>%
-  st_crop(xmin = -10, ymin = 40, xmax = 15, ymax = 52)
+# GRAPHIQUE 3 : Répartition des puissances nominales
 
-#permet de trier les donnée et de garder celle qui sont dans le contour
-data_metropole_propre <- st_intersection(data_sf, france_frontiere) %>%
-  st_drop_geometry()
+# On vérifie que la colonne est au format numérique
+data$puissance_nominale <- as.numeric(data$puissance_nominale)
+
+# Création de l'histogramme
+graph_puissance <- ggplot(data, aes(x = puissance_nominale)) +
+  # Barre violette
+  geom_histogram(binwidth = 25, fill = "#CC79A7", color = "white") +
+  
+  # Titres + légende
+  labs(
+    title = "Répartition des puissances nominales",
+    x = "Puissance Nominale (kW)",
+    y = "Nombre de points de charge"
+  ) +
+  
+  # thème simple
+  theme_minimal()
+
+# Exportation
+ggsave("3_histogramme_puissance.png", plot = graph_puissance, width = 8, height = 5, bg = "white")
+
+
+
+# GRAPHIQUE 4 : Répartition des types de prises (Diagramme à barres)
+
+# On sélectionne uniquement les colonnes "prise_type_..." dans le tab d'origine
+selectC <- select(data, starts_with("prise_type_"))
+
+# On transforme plusieurs colonnes en deux
+formatC <- pivot_longer(selectC, cols = everything(), names_to = "type_prise", values_to = "est_present")
+
+# On garder les lignes où la prise est présente 
+filtre <- filter(formatC, tolower(as.character(est_present)) == "true")
+
+# On regroupe les données par "type_prise"
+groupeD <- group_by(filtre, type_prise)
+
+# On compte le nombre de lignes pour chaque groupe et on stocke ce total dans une nouvelle colonne "quantite"
+comptage <- summarise(groupeD, quantite = n())
+
+# On nettoie la colonne "type_prise" 
+data_prises <- mutate(comptage, type_prise = gsub("prise_type_", "", type_prise))
+
+
+# On initialise le graphique avec nos données finales, en triant l'axe X du plus grand au plus petit (-quantite)
+graph_prises <- ggplot(data_prises, aes(x = reorder(type_prise, -quantite), y = quantite)) +
+  # diagramme orange
+  geom_col(fill = "#E69F00") +
+  # titre x y
+  labs(title = "Répartition par type de prise", x = "Type de prise", y = "Quantité totale") +
+  # thème simple
+  theme_minimal()
+
+# Exportation des données
+ggsave("4_repartition_prises.png", plot = graph_prises, width = 8, height = 5, bg = "white")
+
+print("Les 4 graphiques ont été générés et sauvegardés en .png dans votre dossier de travail !")
