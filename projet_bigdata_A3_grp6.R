@@ -563,7 +563,68 @@ corrplot(matrice_cor, method = "color", type = "full",
 
 
 #----------------------------------------------------------------------------------------------------------------------------------------------------
+#heatmap et clustering
 
+library(dplyr)
+library(leaflet)
+library(leaflet.extras)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(data.table)
+
+sf_use_s2(FALSE)
+# 1. Chargement des données
+data <- fread("C:/Users/hecto/Music/IRVE (1).csv", data.table = FALSE)
+
+# 2. Conversion en GPS
+data_sf <- data %>%
+  mutate(
+    consolidated_latitude  = as.numeric(consolidated_latitude),
+    consolidated_longitude = as.numeric(consolidated_longitude)
+  ) %>%
+  filter(!is.na(consolidated_latitude), !is.na(consolidated_longitude)) %>%
+  st_as_sf(coords = c("consolidated_longitude", "consolidated_latitude"), crs = 4326, remove = FALSE)
+
+# 3. Télécharge le contour, le REND VALIDE (anti-bug), puis le découpe sur la métropole
+france_frontiere <- ne_countries(scale = "medium", country = "France", returnclass = "sf") %>%
+  st_transform(crs = 4326) %>%
+  st_make_valid() %>% # <-- Cette ligne répare les frontières et empêche le crash
+  st_crop(st_bbox(c(xmin = -10, ymin = 40, xmax = 15, ymax = 52), crs = 4326))
+
+# 4. Tri des données (conserve uniquement ce qui intersecte la France)
+data_metropole_propre <- st_filter(data_sf, france_frontiere) %>%
+  st_drop_geometry()
+
+# 5. Création de la carte Heatmap
+carte_heatmap <- leaflet(data_metropole_propre) %>%
+  addTiles() %>% 
+  setView(lng = 2.2137, lat = 46.2276, zoom = 6) %>%
+  
+  addPolygons( # Trace le contour de la France
+    data = france_frontiere,
+    fill = FALSE,            
+    color = "#2c3e50",      
+    weight = 2,             
+    opacity = 1             
+  ) %>%
+  
+  addHeatmap( # Couche de chaleur
+    lng = ~consolidated_longitude, 
+    lat = ~consolidated_latitude,
+    blur = 18,             
+    max = 0.08,             
+    radius = 12  
+  ) %>%
+  
+  addMarkers( # Marqueurs regroupés (clusters)
+    lng = ~consolidated_longitude, 
+    lat = ~consolidated_latitude,
+    clusterOptions = markerClusterOptions() 
+  )
+
+# 6. Affichage final
+carte_heatmap
 
 
 
