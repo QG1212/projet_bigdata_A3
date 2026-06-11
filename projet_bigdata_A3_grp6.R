@@ -595,13 +595,13 @@ carte_heatmap
 # --------------------------------------------------------------------------------------------
 
 data_cor <- data[!is.na(data[["consolidated_latitude"]])  &
-                 !is.na(data[["consolidated_longitude"]]) &
-                 !is.na(data[["nbre_pdc"]])               &
-                 !is.na(data[["puissance_nominale"]])      &
-                 !is.na(data[["implantation_station"]])    &
-                 !is.na(data[["raccordement"]])            &
-                 !is.na(data[["date_mise_en_service"]])            &
-                 !is.na(data[["tarification"]])            , ]
+                   !is.na(data[["consolidated_longitude"]]) &
+                   !is.na(data[["nbre_pdc"]])               &
+                   !is.na(data[["puissance_nominale"]])      &
+                   !is.na(data[["implantation_station"]])    &
+                   !is.na(data[["raccordement"]])            &
+                   !is.na(data[["date_mise_en_service"]])            &
+                   !is.na(data[["tarification"]])            , ]
 data_cor[["annee"]]        <- as.numeric(format(as.Date(data_cor[["date_mise_en_service"]]), "%Y"))
 data_cor[["charge_rapide"]] <- as.numeric(data_cor[["puissance_nominale"]] > 22)
 
@@ -647,8 +647,8 @@ for (type in unique(data_cor[["implantation_station"]])) {
 
 # Discrétisation nbre_pdc pour chi2 + mosaicplot
 data_cor[["taille_station"]] <- cut(data_cor[["nbre_pdc"]],
-                                  breaks = c(0, 1, 4, Inf),
-                                  labels = c("Petite (1 PDC)", "Moyenne (2-4 PDC)", "Grande (5+ PDC)"))
+                                    breaks = c(0, 1, 4, Inf),
+                                    labels = c("Petite (1 PDC)", "Moyenne (2-4 PDC)", "Grande (5+ PDC)"))
 
 data_cor[["implantation_simple"]] <- data_cor[["implantation_station"]]
 data_cor[["implantation_simple"]][data_cor[["implantation_station"]] == "Parking privé réservé à la clientèle"] <- "Autre"
@@ -747,8 +747,8 @@ ggplot(data_cor, aes(x = annee)) +
 
 
 data_matrice <- data_cor[, c("puissance_nominale", "nbre_pdc", "tarification",
-                         "consolidated_latitude", "consolidated_longitude",
-                         "charge_rapide", "annee")]
+                             "consolidated_latitude", "consolidated_longitude",
+                             "charge_rapide", "annee")]
 
 matrice_cor <- cor(data_matrice, method = "spearman")
 
@@ -758,4 +758,71 @@ corrplot(matrice_cor, method = "color", type = "full",
          title = "Matrice de corrélation", mar = c(0, 0, 2, 0))
 
 
-#----------------------------------------------------------------------------------------------------------------------------------------------------
+# ==============================================================================
+# Fonctionnalité 5 : regressions 
+# ==============================================================================
+
+library(nnet)
+data <- read.csv("C:/Quentin/Ecole/ISEN/A3/IRVE.csv")
+
+# CRÉATION DE LA VARIABLE "charge_rapide"
+# Selon la matrice de corrélation, on crée une variable binaire :
+# 1 si la puissance est supérieure ou égale à 50 kW (charge rapide), sinon 0.
+data$charge_rapide <- ifelse(data$puissance_nominale >= 50, 1, 0)
+
+
+
+# MODÈLE 1 : RÉGRESSION LINÉAIRE MULTIPLE (Puissance Nominale)
+
+# On prédit la "puissance_nominale" grâce à "charge_rapide" et "nbre_pdc"
+modele_lineaire <- lm(puissance_nominale ~ charge_rapide + nbre_pdc, data = data)
+
+# Affichage des coefficients et de l'efficacité du modèle linéaire
+summary(modele_lineaire)
+
+
+
+# 4. SÉCURISATION ET PRÉPARATION DE LA VARIABLE "tarification"
+
+# Étape A : On force R à essayer de convertir le texte de tarification en vrais chiffres
+tarification_forcee_num <- as.numeric(as.character(data$tarification))
+
+# Étape B : Test de sécurité automatique
+if (sum(!is.na(tarification_forcee_num)) > 0) {
+  
+  # --- SCÉNARIO A : Si la colonne contient des prix ou des chiffres ---
+  # On calcule automatiquement les seuils pour couper équitablement en 3 tiers
+  seuils <- quantile(tarification_forcee_num, probs = c(0, 0.33, 0.66, 1), na.rm = TRUE)
+  
+  # On crée les 3 groupes demandés : bas, modéré, élevé
+  data$tarification_groupe <- cut(tarification_forcee_num, 
+                                  breaks = seuils, 
+                                  labels = c("bas", "modéré", "élevé"), 
+                                  include.lowest = TRUE)
+  
+} else {
+  
+  # --- SCÉNARIO B : Si la colonne contient déjà du texte (ex: "Gratuit", "Payant") ---
+  # On transforme simplement la colonne d'origine en catégories pour R
+  data$tarification_groupe <- as.factor(data$tarification)
+  
+}
+
+# Étape C : Petite vérification visuelle dans la console pour valider les groupes
+print("Vérification des groupes créés pour la régression logistique :")
+print(table(data$tarification_groupe))
+
+
+# ==============================================================================
+# 5. MODÈLE 2 : RÉGRESSION LOGISTIQUE MULTINOMIALE (Tarification)
+# ==============================================================================
+
+# On lance le modèle sur la nouvelle colonne nettoyée "tarification_groupe"
+modele_logistique <- multinom(tarification_groupe ~ puissance_nominale + nbre_pdc, data = data)
+
+# Affichage des coefficients du modèle logistique
+summary(modele_logistique)
+
+# Exporter le dataframe nettoyé en format CSV pour l'IA
+write.csv(data_cor, file = "donnees_nettoyees.csv", row.names = FALSE)
+write.csv2(data_cor, file = "donnees_nettoyees_excel.csv", row.names = FALSE, fileEncoding = "latin1")
