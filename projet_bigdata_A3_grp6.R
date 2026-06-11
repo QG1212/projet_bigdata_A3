@@ -345,60 +345,39 @@ print("Les 4 graphiques ont été générés et sauvegardés en .png dans votre 
 #---------------------------------------------------------------------------
 #tarification 
 
-library(stringr)
-library(data.table)
-
-#chargement de tarification et [[1]] permet de convertir directement le data.frame en un vecteur simple
-tarification <- fread("C:/Users/hecto/Music/IRVE (1).csv", select = "tarification", data.table = FALSE)[[1]]
-
-
-#extration des données, si gratuit -> 0 etc 
 extraire_prix_kwh <- function(texte) {
   if (is.na(texte) || texte == "") return(NA_real_)
-  
-  # Rejets précoces
-  if (str_detect(texte, "inconnu|^nc$|non communiqu|^payant$|min(?:ute)?$|^http|fix")) {
-    return(NA_real_)
-  }
-  
-  # Cas de la gratuité explicite (0 EUR/kWh)
+  if (str_detect(texte, "inconnu|^nc$|non communiqu|^payant$|min(?:ute)?$|^http|fix")) return(NA_real_)
   if (str_detect(texte, "\\b0[.,]?0*\\s*(eur.*)?/?kwh")) return(0.0)
   
-  # Extraction des nombres
   nombres <- str_extract_all(texte, "[0-9]+[.,]?[0-9]*")[[1]]
   if (length(nombres) == 0) return(NA_real_)
   
   nums <- as.numeric(str_replace(nombres, ",", "."))
+  if (str_detect(texte, "c(?:t|ts?|ents?)\\s*/?\\s*kwh")) nums <- nums / 100
   
-  # Conversion centimes -> euros
-  if (str_detect(texte, "c(?:t|ts?|ents?)\\s*/?\\s*kwh")) {
-    nums <- nums / 100
-  }
-  
-  # Filtrage des valeurs aberrantes (0.05€ à 3.00€ / kWh)
   valides <- nums[nums >= 0.05 & nums <= 3.00]
   if (length(valides) == 0) return(NA_real_)
   
   return(round(mean(valides), 4))
 }
 
-
-# 3. APPLICATION DU NETTOYAGE ET DE LA NORMALISATION
-data$tarification <- tarification |> 
-  str_to_lower() |> 
-  str_replace_all("€", "eur") |> 
-  str_replace_all("kw h", "kwh") |> 
-  str_replace_all("kw\\b", "kwh") |> 
-  str_trim() |> 
-  sapply(extraire_prix_kwh, USE.NAMES = FALSE) |> 
-  str_c(" €/kWh")
+# Nettoyage + normalisation
+data[["tarification"]] <- data[["tarification"]] |>
+  str_to_lower() |>
+  str_replace_all("€", "eur") |>
+  str_replace_all("kw h", "kwh") |>
+  str_replace_all("kw\\b", "kwh") |>
+  str_trim() |>
+  sapply(extraire_prix_kwh, USE.NAMES = FALSE) 
+#str_c(" €/kWh")
 
 
 
 #-------------------------------------------------------------------------------------------
 #Bivariée
 
-df_cor <- data[!is.na(data[["consolidated_latitude"]])  &
+data_cor <- data[!is.na(data[["consolidated_latitude"]])  &
                  !is.na(data[["consolidated_longitude"]]) &
                  !is.na(data[["nbre_pdc"]])               &
                  !is.na(data[["puissance_nominale"]])      &
@@ -406,33 +385,33 @@ df_cor <- data[!is.na(data[["consolidated_latitude"]])  &
                  !is.na(data[["raccordement"]])            &
                  !is.na(data[["date_mise_en_service"]])            &
                  !is.na(data[["tarification"]])            , ]
-df_cor[["annee"]]        <- as.numeric(format(as.Date(df_cor[["date_mise_en_service"]]), "%Y"))
-df_cor[["charge_rapide"]] <- as.numeric(df_cor[["puissance_nominale"]] > 22)
+data_cor[["annee"]]        <- as.numeric(format(as.Date(data_cor[["date_mise_en_service"]]), "%Y"))
+data_cor[["charge_rapide"]] <- as.numeric(data_cor[["puissance_nominale"]] > 22)
 
-cor.test(df_cor[["consolidated_latitude"]],  df_cor[["nbre_pdc"]])
-cor.test(df_cor[["consolidated_longitude"]], df_cor[["nbre_pdc"]])
-cor.test(df_cor[["consolidated_latitude"]],  df_cor[["puissance_nominale"]])
-cor.test(df_cor[["consolidated_longitude"]], df_cor[["puissance_nominale"]])
-cor.test(df_cor[["consolidated_longitude"]], df_cor[["puissance_nominale"]])
+cor.test(data_cor[["consolidated_latitude"]],  data_cor[["nbre_pdc"]])
+cor.test(data_cor[["consolidated_longitude"]], data_cor[["nbre_pdc"]])
+cor.test(data_cor[["consolidated_latitude"]],  data_cor[["puissance_nominale"]])
+cor.test(data_cor[["consolidated_longitude"]], data_cor[["puissance_nominale"]])
+cor.test(data_cor[["consolidated_longitude"]], data_cor[["puissance_nominale"]])
 
 
 # PUISSANCE VS PRIX tarification 
-cor.test(df_cor[["tarification"]], df_cor[["puissance_nominale"]], method = "spearman")
+cor.test(data_cor[["tarification"]], data_cor[["puissance_nominale"]], method = "spearman")
 
 # Visualisation
-ggplot(df_cor, aes(x = as.factor(charge_rapide), y = tarification)) +
+ggplot(data_cor, aes(x = as.factor(charge_rapide), y = tarification)) +
   geom_boxplot(fill = c("lightblue", "pink")) +
   labs(title = "Puissance vs Tarification",
        x = "Charge rapide (0=Non, 1=Oui)", y = "Tarification (€/kWh)")
 
 # LOCA {(xy)} VS EQUIPEMENT nbre_pdc
 
-cor.test(df_cor[["consolidated_latitude"]],  df_cor[["nbre_pdc"]])
-cor.test(df_cor[["consolidated_longitude"]], df_cor[["nbre_pdc"]])
-cor.test(df_cor[["consolidated_latitude"]],  df_cor[["puissance_nominale"]])
-cor.test(df_cor[["consolidated_longitude"]], df_cor[["puissance_nominale"]])
+cor.test(data_cor[["consolidated_latitude"]],  data_cor[["nbre_pdc"]])
+cor.test(data_cor[["consolidated_longitude"]], data_cor[["nbre_pdc"]])
+cor.test(data_cor[["consolidated_latitude"]],  data_cor[["puissance_nominale"]])
+cor.test(data_cor[["consolidated_longitude"]], data_cor[["puissance_nominale"]])
 
-ggplot(df_cor, aes(x = consolidated_longitude, y = consolidated_latitude, color = nbre_pdc)) +
+ggplot(data_cor, aes(x = consolidated_longitude, y = consolidated_latitude, color = nbre_pdc)) +
   geom_point(alpha = 0.5) +
   scale_color_gradient(low = "blue", high = "red") +
   labs(title = "Localisation vs Nombre de points de charge",
@@ -444,21 +423,21 @@ ggplot(df_cor, aes(x = consolidated_longitude, y = consolidated_latitude, color 
 
 
 # Moyenne par groupe
-for (type in unique(df_cor[["implantation_station"]])) {
-  lignes <- df_cor[df_cor[["implantation_station"]] == type, ]
+for (type in unique(data_cor[["implantation_station"]])) {
+  lignes <- data_cor[data_cor[["implantation_station"]] == type, ]
   cat(type, "-> moyenne PDC:", round(mean(lignes[["nbre_pdc"]]), 1), "\n")
 }
 
 # Discrétisation nbre_pdc pour chi2 + mosaicplot
-df_cor[["taille_station"]] <- cut(df_cor[["nbre_pdc"]],
+data_cor[["taille_station"]] <- cut(data_cor[["nbre_pdc"]],
                                   breaks = c(0, 1, 4, Inf),
                                   labels = c("Petite (1 PDC)", "Moyenne (2-4 PDC)", "Grande (5+ PDC)"))
 
-df_cor[["implantation_simple"]] <- df_cor[["implantation_station"]]
-df_cor[["implantation_simple"]][df_cor[["implantation_station"]] == "Parking privé réservé à la clientèle"] <- "Autre"
-df_cor[["implantation_simple"]][df_cor[["implantation_station"]] == "Station dédiée à la recharge rapide"] <- "Autre"
+data_cor[["implantation_simple"]] <- data_cor[["implantation_station"]]
+data_cor[["implantation_simple"]][data_cor[["implantation_station"]] == "Parking privé réservé à la clientèle"] <- "Autre"
+data_cor[["implantation_simple"]][data_cor[["implantation_station"]] == "Station dédiée à la recharge rapide"] <- "Autre"
 
-tab2 <- table(df_cor[["implantation_simple"]], df_cor[["taille_station"]])
+tab2 <- table(data_cor[["implantation_simple"]], data_cor[["taille_station"]])
 print(tab2)
 chisq.test(tab2)
 
@@ -472,7 +451,7 @@ cramer_v <- function(tbl) {
 cat("V de Cramér :", round(cramer_v(tab2), 3), "\n")
 
 
-ggplot(df_cor, aes(x = implantation_station, y = nbre_pdc)) +
+ggplot(data_cor, aes(x = implantation_station, y = nbre_pdc)) +
   geom_boxplot(fill = "lightblue") +
   labs(title = "Implantation vs Nb points de charge",
        x = "Implantation", y = "Nb de PDC") +
@@ -482,15 +461,15 @@ ggplot(df_cor, aes(x = implantation_station, y = nbre_pdc)) +
 # 4. IMPLANTATION vs PUISSANCE
 
 # Moyenne par groupe
-for (type in unique(df_cor[["implantation_station"]])) {
-  lignes <- df_cor[df_cor[["implantation_station"]] == type, ]
+for (type in unique(data_cor[["implantation_station"]])) {
+  lignes <- data_cor[data_cor[["implantation_station"]] == type, ]
   cat(type, "-> puissance moyenne:", round(mean(lignes[["puissance_nominale"]]), 1), "kW\n")
 }
 
 # Kruskal-Wallis (> 2 groupes, non paramétrique)
-kruskal.test(puissance_nominale ~ implantation_station, data = df_cor)
+kruskal.test(puissance_nominale ~ implantation_station, data = data_cor)
 
-ggplot(df_cor, aes(x = implantation_station, y = puissance_nominale)) +
+ggplot(data_cor, aes(x = implantation_station, y = puissance_nominale)) +
   stat_summary(fun = mean, geom = "point", size = 4, color = "blue") +
   stat_summary(fun.data = mean_cl_normal, geom = "errorbar", width = 0.2, color = "red") +
   labs(title = "Implantation vs Puissance (moyenne ± IC)",
@@ -501,19 +480,19 @@ ggplot(df_cor, aes(x = implantation_station, y = puissance_nominale)) +
 
 
 # Wilcoxon (2 groupes, non paramétrique )
-wilcox.test(puissance_nominale ~ raccordement, data = df_cor)
+wilcox.test(puissance_nominale ~ raccordement, data = data_cor)
 
 
-ggplot(df_cor, aes(x = raccordement, y = puissance_nominale)) +
+ggplot(data_cor, aes(x = raccordement, y = puissance_nominale)) +
   geom_bar(stat = "summary", fun = "mean", fill = c("lightblue", "pink")) +
   labs(title = "Raccordement vs Puissance moyenne",
        x = "Raccordement", y = "Puissance moyenne (kW)")
 
 
 # ── implantation vs tarification
-kruskal.test(tarification ~ implantation_station, data = df_cor)
+kruskal.test(tarification ~ implantation_station, data = data_cor)
 
-ggplot(df_cor[!is.na(df_cor[["implantation_station"]]) & !is.na(df_cor[["tarification"]]), ],
+ggplot(data_cor[!is.na(data_cor[["implantation_station"]]) & !is.na(data_cor[["tarification"]]), ],
        aes(x = implantation_station, y = tarification)) +
   geom_boxplot(fill = "lightblue") +
   labs(title = "Implantation vs Tarification",
@@ -521,9 +500,9 @@ ggplot(df_cor[!is.na(df_cor[["implantation_station"]]) & !is.na(df_cor[["tarific
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 # ── raccordement vs tarification
-wilcox.test(tarification ~ raccordement, data = df_cor)
+wilcox.test(tarification ~ raccordement, data = data_cor)
 
-ggplot(df_cor, aes(x = raccordement, y = tarification)) +
+ggplot(data_cor, aes(x = raccordement, y = tarification)) +
   geom_boxplot(fill = c("lightblue", "pink")) +
   labs(title = "Raccordement vs Tarification",
        x = "Raccordement", y = "Tarification (€/kWh)")
@@ -533,7 +512,7 @@ ggplot(df_cor, aes(x = raccordement, y = tarification)) +
 
 
 # ── implantation vs raccordement
-tab3 <- table(df_cor[["implantation_station"]], df_cor[["raccordement"]])
+tab3 <- table(data_cor[["implantation_station"]], data_cor[["raccordement"]])
 print(tab3)
 chisq.test(tab3)
 cat("V de Cramér :", round(cramer_v(tab3), 3), "\n")
@@ -543,18 +522,18 @@ mosaicplot(tab3, main = "Implantation vs Raccordement",
 mosaicplot(tab2, main = "Implantation vs Taille de station",
            color = c("blue", "violet", "pink"), las = 2)
 
-ggplot(df_cor, aes(x = annee)) +
+ggplot(data_cor, aes(x = annee)) +
   geom_bar(fill = "lightblue") +
   labs(title = "Nombre de stations mises en service par année",
        x = "Année", y = "Nombre de stations") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
-df_matrice <- df_cor[, c("puissance_nominale", "nbre_pdc", "tarification",
+data_matrice <- data_cor[, c("puissance_nominale", "nbre_pdc", "tarification",
                          "consolidated_latitude", "consolidated_longitude",
                          "charge_rapide", "annee")]
 
-matrice_cor <- cor(df_matrice, method = "spearman")
+matrice_cor <- cor(data_matrice, method = "spearman")
 
 corrplot(matrice_cor, method = "color", type = "full",
          addCoef.col = "black", tl.col = "black", tl.srt = 45,
@@ -633,17 +612,13 @@ library(data.table)
 library(dplyr)
 library(ggplot2)
 
-# --- 1. Chargement du fichier ---
-df <- fread("C:/Users/hecto/Music/IRVE (1).csv", data.table = FALSE)
-
-# --- 2. Préparation des données (Top 10) ---
-df_bar <- df |>
+data_bar <- data |>
   filter(!is.na(nbre_pdc)) |>
   count(nbre_pdc) |>
   arrange(desc(n)) |>
-  slice_head(n = 10)   # <-- garder seulement les 10 valeurs les plus fréquentes
+  slice_head(n = 10)   #on garde seulement les 10 valeurs les plus fréquentes
 
-stats_nbre_pdc <- df_bar |>
+stats_nbre_pdc <- data_bar |> #calcul moyenne et variance
   summarise(
     moyenne = mean(n),
     variance = var(n)
@@ -651,8 +626,8 @@ stats_nbre_pdc <- df_bar |>
 
 print(stats_nbre_pdc)
 
-# --- 3. Barplot horizontal ---
-ggplot(df_bar, aes(x = reorder(factor(nbre_pdc), n), y = n)) +
+#barplot horizontal
+ggplot(data_bar, aes(x = reorder(factor(nbre_pdc), n), y = n)) +
   geom_col(fill = "lightgreen") +
   coord_flip() +
   theme_minimal() +
@@ -670,11 +645,9 @@ library(data.table)
 library(dplyr)
 library(ggplot2)
 
-# --- 1. Chargement du fichier ---
-df <- fread("C:/Users/hecto/Music/IRVE (1).csv", data.table = FALSE)
 
-# --- 2. Regroupement en classes ---
-df_pie <- df |>
+#regroupement en classes pour voir toutes les données
+data_pie <- data |>
   filter(!is.na(puissance_nominale)) |>
   mutate(
     classe = cut(
@@ -689,7 +662,7 @@ df_pie <- df |>
     label = paste0(classe, " (", round(pourcentage, 1), "%)")
   )
 
-stats_puissance <- df_pie |>
+stats_puissance <- data_pie |>
   summarise(
     moyenne = mean(n),
     variance = var(n)
@@ -697,8 +670,8 @@ stats_puissance <- df_pie |>
 
 print(stats_puissance)
 
-# --- 3. Camembert ---
-ggplot(df_pie, aes(x = "", y = pourcentage, fill = classe)) +
+#camembert
+ggplot(data_pie, aes(x = "", y = pourcentage, fill = classe)) +
   geom_col(width = 1, color = "white") +
   coord_polar(theta = "y") +
   theme_void() +
@@ -721,11 +694,9 @@ library(tidyr)
 library(stringr)
 library(ggplot2)
 
-# --- 1. Chargement du fichier ---
-df <- fread("C:/Users/hecto/Music/IRVE (1).csv", data.table = FALSE)
 
-# --- 2. Nettoyage de la colonne implantation_station ---
-df <- df |>
+#nettoyage de la colonne implantation_station 
+data <- data |>
   mutate(
     implantation_station = str_trim(implantation_station),
     implantation_station = case_when(
@@ -744,14 +715,14 @@ df <- df |>
     )
   )
 
-# --- 3. Préparation des données ---
-df_bar <- df |>
+#préparation des données
+data_bar <- data |>
   filter(!is.na(implantation_station)) |>   # exclure les NA
   count(implantation_station) |>            # compter chaque catégorie
   arrange(n)                                # tri par fréquence
 
-# --- 4. Calcul de la moyenne et de la variance des fréquences ---
-stats_implantation <- df_bar |>
+#calcul de la moyenne et de la variance des fréquences 
+stats_implantation <- data_bar |>
   summarise(
     moyenne = mean(n),
     variance = var(n)
@@ -760,8 +731,8 @@ stats_implantation <- df_bar |>
 
 print(stats_implantation)
 
-# --- 5. Barplot horizontal ---
-ggplot(df_bar, aes(x = reorder(implantation_station, n), y = n)) +
+#barplot horizontal 
+ggplot(data_bar, aes(x = reorder(implantation_station, n), y = n)) +
   geom_col(fill = "orange") +
   coord_flip() +
   theme_minimal() +
@@ -780,17 +751,14 @@ library(data.table)
 library(dplyr)
 library(ggplot2)
 
-# --- 1. Chargement du fichier complet ---
-df <- fread("C:/Users/hecto/Music/IRVE (1).csv", data.table = FALSE)
 
-# --- 2. Extraction de la colonne tarification brute ---
-tarification <- df$tarification
+#extraction de la colonne tarification brute
+tarification <- data$tarification
 
-# --- 3. Fonction de nettoyage / extraction du prix ---
+#fonction de nettoyage / extraction du prix 
 extraire_prix_kwh <- function(texte) {
   if (is.na(texte) || texte == "") return(NA_real_)
   
-  # Rejets précoces
   if (str_detect(texte, "inconnu|^nc$|non communiqu|^payant$|min(?:ute)?$|^http|fix")) {
     return(NA_real_)
   }
@@ -816,8 +784,8 @@ extraire_prix_kwh <- function(texte) {
   return(round(mean(valides), 4))
 }
 
-# --- 4. Nettoyage + normalisation ---
-df$tarification_clean <- tarification |> 
+#nettoyage + normalisation 
+data$tarification_clean <- tarification |> 
   str_to_lower() |> 
   str_replace_all("€", "eur") |> 
   str_replace_all("kw h", "kwh") |> 
@@ -825,14 +793,14 @@ df$tarification_clean <- tarification |>
   str_trim() |> 
   sapply(extraire_prix_kwh, USE.NAMES = FALSE)
 
-# --- 5. Ajout de l'unité (colonne texte) ---
-df$tarification <- str_c(df$tarification_clean, " €/kWh")
+#ajout de l'unité (colonne texte)
+data$tarification <- str_c(data$tarification_clean, " €/kWh")
 
-# --- 6. Conversion numérique ---
-df$tarification_num <- df$tarification_clean
+#conversion numérique
+data$tarification_num <- data$tarification_clean
 
-# --- 7. Calcul des statistiques ---
-stats <- df %>%
+#calcul des statistiques
+stats <- data %>%
   summarise(
     moyenne = mean(tarification_num, na.rm = TRUE),
     variance = var(tarification_num, na.rm = TRUE)
@@ -840,9 +808,9 @@ stats <- df %>%
 
 print(stats)
 
-# --- 8. Boxplot ---
+#boxplot
 ggplot(
-  df |> filter(!is.na(tarification_num)),
+  data |> filter(!is.na(tarification_num)),
   aes(x = tarification_num)
 ) +
   geom_histogram(
