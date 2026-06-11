@@ -626,6 +626,240 @@ carte_heatmap <- leaflet(data_metropole_propre) %>%
 # 6. Affichage final
 carte_heatmap
 
+#------------------------------------------------------------------------------
+#affichage nbre_pdc
+
+library(data.table)
+library(dplyr)
+library(ggplot2)
+
+# --- 1. Chargement du fichier ---
+df <- fread("C:/Users/hecto/Music/IRVE (1).csv", data.table = FALSE)
+
+# --- 2. Préparation des données (Top 10) ---
+df_bar <- df |>
+  filter(!is.na(nbre_pdc)) |>
+  count(nbre_pdc) |>
+  arrange(desc(n)) |>
+  slice_head(n = 10)   # <-- garder seulement les 10 valeurs les plus fréquentes
+
+stats_nbre_pdc <- df_bar |>
+  summarise(
+    moyenne = mean(n),
+    variance = var(n)
+  )
+
+print(stats_nbre_pdc)
+
+# --- 3. Barplot horizontal ---
+ggplot(df_bar, aes(x = reorder(factor(nbre_pdc), n), y = n)) +
+  geom_col(fill = "lightgreen") +
+  coord_flip() +
+  theme_minimal() +
+  labs(
+    title = "Top 10 des valeurs de nombre de points de charge",
+    x = "Nombre de points de charge (PDC)",
+    y = "Nombre d'occurrences"
+  ) +
+  theme(legend.position = "none")
+
+#--------------------------------------------------------------------------------
+#affichage puissance nominale
+
+library(data.table)
+library(dplyr)
+library(ggplot2)
+
+# --- 1. Chargement du fichier ---
+df <- fread("C:/Users/hecto/Music/IRVE (1).csv", data.table = FALSE)
+
+# --- 2. Regroupement en classes ---
+df_pie <- df |>
+  filter(!is.na(puissance_nominale)) |>
+  mutate(
+    classe = cut(
+      puissance_nominale,
+      breaks = c(0, 50, 150, 350, 1000, 5000, Inf),
+      labels = c("0–50", "50–150", "150–350", "350–1000", "1000–5000", ">5000")
+    )
+  ) |>
+  count(classe) |>
+  mutate(
+    pourcentage = n / sum(n) * 100,
+    label = paste0(classe, " (", round(pourcentage, 1), "%)")
+  )
+
+stats_puissance <- df_pie |>
+  summarise(
+    moyenne = mean(n),
+    variance = var(n)
+  )
+
+print(stats_puissance)
+
+# --- 3. Camembert ---
+ggplot(df_pie, aes(x = "", y = pourcentage, fill = classe)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  theme_void() +
+  labs(
+    title = "Répartition des puissances nominales (par classes)",
+    fill = "Classe (kW)"
+  ) +
+  geom_text(
+    aes(label = label),
+    position = position_stack(vjust = 0.5),
+    size = 4
+  )
+
+#------------------------------------------------------------------------------
+#affichage implantation station
+
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+
+# --- 1. Chargement du fichier ---
+df <- fread("C:/Users/hecto/Music/IRVE (1).csv", data.table = FALSE)
+
+# --- 2. Nettoyage de la colonne implantation_station ---
+df <- df |>
+  mutate(
+    implantation_station = str_trim(implantation_station),
+    implantation_station = case_when(
+      # Valeurs vides ou inutilisables
+      is.na(implantation_station) | implantation_station %in% c("", "/", "false", "x", "X") ~ NA_character_,
+      
+      # Corrections d'encodage
+      str_detect(implantation_station, "priv") & str_detect(implantation_station, "public") ~ 
+        "Parking privé à usage public",
+      
+      str_detect(implantation_station, "priv") & str_detect(implantation_station, "client") ~ 
+        "Parking privé réservé à la clientèle",
+      
+      # Sinon on garde la valeur telle quelle
+      TRUE ~ implantation_station
+    )
+  )
+
+# --- 3. Préparation des données ---
+df_bar <- df |>
+  filter(!is.na(implantation_station)) |>   # exclure les NA
+  count(implantation_station) |>            # compter chaque catégorie
+  arrange(n)                                # tri par fréquence
+
+# --- 4. Calcul de la moyenne et de la variance des fréquences ---
+stats_implantation <- df_bar |>
+  summarise(
+    moyenne = mean(n),
+    variance = var(n)
+  )
+
+
+print(stats_implantation)
+
+# --- 5. Barplot horizontal ---
+ggplot(df_bar, aes(x = reorder(implantation_station, n), y = n)) +
+  geom_col(fill = "orange") +
+  coord_flip() +
+  theme_minimal() +
+  labs(
+    title = "Répartition des types d'implantation de station",
+    x = "Type d'implantation",
+    y = "Nombre d'occurrences"
+  ) +
+  theme(legend.position = "none")
+
+#----------------------------------------------------------------------------
+#affichage tarification
+
+library(stringr)
+library(data.table)
+library(dplyr)
+library(ggplot2)
+
+# --- 1. Chargement du fichier complet ---
+df <- fread("C:/Users/hecto/Music/IRVE (1).csv", data.table = FALSE)
+
+# --- 2. Extraction de la colonne tarification brute ---
+tarification <- df$tarification
+
+# --- 3. Fonction de nettoyage / extraction du prix ---
+extraire_prix_kwh <- function(texte) {
+  if (is.na(texte) || texte == "") return(NA_real_)
+  
+  # Rejets précoces
+  if (str_detect(texte, "inconnu|^nc$|non communiqu|^payant$|min(?:ute)?$|^http|fix")) {
+    return(NA_real_)
+  }
+  
+  # Gratuit
+  if (str_detect(texte, "\\b0[.,]?0*\\s*(eur.*)?/?kwh")) return(0.0)
+  
+  # Extraction des nombres
+  nombres <- str_extract_all(texte, "[0-9]+[.,]?[0-9]*")[[1]]
+  if (length(nombres) == 0) return(NA_real_)
+  
+  nums <- as.numeric(str_replace(nombres, ",", "."))
+  
+  # Centimes → euros
+  if (str_detect(texte, "c(?:t|ts?|ents?)\\s*/?\\s*kwh")) {
+    nums <- nums / 100
+  }
+  
+  # Filtrage valeurs aberrantes
+  valides <- nums[nums >= 0.05 & nums <= 3.00]
+  if (length(valides) == 0) return(NA_real_)
+  
+  return(round(mean(valides), 4))
+}
+
+# --- 4. Nettoyage + normalisation ---
+df$tarification_clean <- tarification |> 
+  str_to_lower() |> 
+  str_replace_all("€", "eur") |> 
+  str_replace_all("kw h", "kwh") |> 
+  str_replace_all("kw\\b", "kwh") |> 
+  str_trim() |> 
+  sapply(extraire_prix_kwh, USE.NAMES = FALSE)
+
+# --- 5. Ajout de l'unité (colonne texte) ---
+df$tarification <- str_c(df$tarification_clean, " €/kWh")
+
+# --- 6. Conversion numérique ---
+df$tarification_num <- df$tarification_clean
+
+# --- 7. Calcul des statistiques ---
+stats <- df %>%
+  summarise(
+    moyenne = mean(tarification_num, na.rm = TRUE),
+    variance = var(tarification_num, na.rm = TRUE)
+  )
+
+print(stats)
+
+# --- 8. Boxplot ---
+ggplot(
+  df |> filter(!is.na(tarification_num)),
+  aes(x = tarification_num)
+) +
+  geom_histogram(
+    bins = 30,
+    fill = "steelblue",
+    color = "black",
+    alpha = 0.7
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Histogramme des tarifs (€/kWh)",
+    x = "Tarification (€/kWh)",
+    y = "Fréquence"
+  )
+
+#-----------------------------------------------------------------------------
+
 
 
 
