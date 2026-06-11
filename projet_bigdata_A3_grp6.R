@@ -20,6 +20,10 @@ library(tidyverse)
 library(stringr)
 library(dplyr)
 library(corrplot)
+library(data.table)
+library(ggplot2)
+library(tidyr)
+library(lubridate)
 
 
 #suppression
@@ -34,7 +38,7 @@ data <- data[!duplicated(data[["id_pdc_itinerance"]]), ]
 
 
 # ------------------------------------------------------------------------------
-# Fonctionnalité 1
+# Fonctionnalité 1 Trie
 # ------------------------------------------------------------------------------
 
 # Mots considérés comme non pertinents
@@ -133,7 +137,6 @@ data[["puissance_nominale"]][data[["puissance_nominale"]] >400 ] = NA
 
 
 
-library(dplyr)
 
 data <- read.csv("C:/Users/hecto/Music/IRVE (1).csv", sep = ",", stringsAsFactors = FALSE)
 
@@ -159,30 +162,212 @@ data_metropole_propre <- data %>%
 
 View(data_metropole_propre)
 
+#tarification 
 
-# ==============================================================================
-# FONCTIONNALITÉ 2 : VISUALISATION DES DONNÉES ET EXPORT PNG
-# ==============================================================================
+extraire_prix_kwh <- function(texte) {
+  if (is.na(texte) || texte == "") return(NA_real_)
+  if (str_detect(texte, "inconnu|^nc$|non communiqu|^payant$|min(?:ute)?$|^http|fix")) return(NA_real_)
+  if (str_detect(texte, "\\b0[.,]?0*\\s*(eur.*)?/?kwh")) return(0.0)
+  
+  nombres <- str_extract_all(texte, "[0-9]+[.,]?[0-9]*")[[1]]
+  if (length(nombres) == 0) return(NA_real_)
+  
+  nums <- as.numeric(str_replace(nombres, ",", "."))
+  if (str_detect(texte, "c(?:t|ts?|ents?)\\s*/?\\s*kwh")) nums <- nums / 100
+  
+  valides <- nums[nums >= 0.05 & nums <= 3.00]
+  if (length(valides) == 0) return(NA_real_)
+  
+  return(round(mean(valides), 4))
+}
 
-# Chargement des bibliothèques nécessaires pour le script
-library(dplyr)      
-library(ggplot2)    
-library(lubridate)  
-library(tidyr)      
+# Nettoyage + normalisation
+data[["tarification"]] <- data[["tarification"]] |>
+  str_to_lower() |>
+  str_replace_all("€", "eur") |>
+  str_replace_all("kw h", "kwh") |>
+  str_replace_all("kw\\b", "kwh") |>
+  str_trim() |>
+  sapply(extraire_prix_kwh, USE.NAMES = FALSE) 
+#str_c(" €/kWh")
 
-# Importation du jeu de données
-data <- read.csv("C:/Quentin/Ecole/ISEN/A3/IRVE.csv")
 
 
-# ==============================================================================
-# FONCTIONNALITÉ 2 : VISUALISATION DES DONNÉES ET EXPORT PNG
-# ==============================================================================
 
-# Chargement des bibliothèques nécessaires pour le script
-library(dplyr)      
-library(ggplot2)    
-library(lubridate)  
-library(tidyr)      
+#------------------------------------------------------------------------------
+
+#affichage nbre_pdc
+
+
+data_bar <- data |>
+  filter(!is.na(nbre_pdc)) |>
+  count(nbre_pdc) |>
+  arrange(desc(n)) |>
+  slice_head(n = 10)   #on garde seulement les 10 valeurs les plus fréquentes
+
+stats_nbre_pdc <- data_bar |> #calcul moyenne et variance
+  summarise(
+    moyenne = mean(n),
+    variance = var(n)
+  )
+
+print(stats_nbre_pdc)
+
+#barplot horizontal
+ggplot(data_bar, aes(x = reorder(factor(nbre_pdc), n), y = n)) +
+  geom_col(fill = "lightgreen") +
+  coord_flip() +
+  theme_minimal() +
+  labs(
+    title = "Top 10 des valeurs de nombre de points de charge",
+    x = "Nombre de points de charge (PDC)",
+    y = "Nombre d'occurrences"
+  ) +
+  theme(legend.position = "none")
+
+#--------------------------------------------------------------------------------
+#affichage puissance nominale
+
+
+#regroupement en classes pour voir toutes les données
+data_pie <- data |>
+  filter(!is.na(puissance_nominale)) |>
+  mutate(
+    classe = cut(
+      puissance_nominale,
+      breaks = c(0, 50, 150, 350, 1000, 5000, Inf),
+      labels = c("0–50", "50–150", "150–350", "350–1000", "1000–5000", ">5000")
+    )
+  ) |>
+  count(classe) |>
+  mutate(
+    pourcentage = n / sum(n) * 100,
+    label = paste0(classe, " (", round(pourcentage, 1), "%)")
+  )
+
+stats_puissance <- data_pie |>
+  summarise(
+    moyenne = mean(n),
+    variance = var(n)
+  )
+
+print(stats_puissance)
+
+#camembert
+ggplot(data_pie, aes(x = "", y = pourcentage, fill = classe)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  theme_void() +
+  labs(
+    title = "Répartition des puissances nominales (par classes)",
+    fill = "Classe (kW)"
+  ) +
+  geom_text(
+    aes(label = label),
+    position = position_stack(vjust = 0.5),
+    size = 4
+  )
+
+#------------------------------------------------------------------------------
+#affichage implantation station
+
+
+
+#nettoyage de la colonne implantation_station 
+data <- data |>
+  mutate(
+    implantation_station = str_trim(implantation_station),
+    implantation_station = case_when(
+      # Valeurs vides ou inutilisables
+      is.na(implantation_station) | implantation_station %in% c("", "/", "false", "x", "X") ~ NA_character_,
+      
+      # Corrections d'encodage
+      str_detect(implantation_station, "priv") & str_detect(implantation_station, "public") ~ 
+        "Parking privé à usage public",
+      
+      str_detect(implantation_station, "priv") & str_detect(implantation_station, "client") ~ 
+        "Parking privé réservé à la clientèle",
+      
+      # Sinon on garde la valeur telle quelle
+      TRUE ~ implantation_station
+    )
+  )
+
+#préparation des données
+data_bar <- data |>
+  filter(!is.na(implantation_station)) |>   # exclure les NA
+  count(implantation_station) |>            # compter chaque catégorie
+  arrange(n)                                # tri par fréquence
+
+#calcul de la moyenne et de la variance des fréquences 
+stats_implantation <- data_bar |>
+  summarise(
+    moyenne = mean(n),
+    variance = var(n)
+  )
+
+
+print(stats_implantation)
+
+#barplot horizontal 
+ggplot(data_bar, aes(x = reorder(implantation_station, n), y = n)) +
+  geom_col(fill = "orange") +
+  coord_flip() +
+  theme_minimal() +
+  labs(
+    title = "Répartition des types d'implantation de station",
+    x = "Type d'implantation",
+    y = "Nombre d'occurrences"
+  ) +
+  theme(legend.position = "none")
+
+#----------------------------------------------------------------------------
+#affichage tarification
+
+
+#extraction de la colonne tarification brute
+tarification <- data$tarification
+
+
+#ajout de l'unité (colonne texte)
+data$tarification <- str_c(data$tarification_clean, " €/kWh")
+
+#conversion numérique
+data$tarification_num <- data$tarification_clean
+
+#calcul des statistiques
+stats <- data %>%
+  summarise(
+    moyenne = mean(tarification_num, na.rm = TRUE),
+    variance = var(tarification_num, na.rm = TRUE)
+  )
+
+print(stats)
+
+#boxplot
+ggplot(
+  data |> filter(!is.na(tarification_num)),
+  aes(x = tarification_num)
+) +
+  geom_histogram(
+    bins = 30,
+    fill = "steelblue",
+    color = "black",
+    alpha = 0.7
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Histogramme des tarifs (€/kWh)",
+    x = "Tarification (€/kWh)",
+    y = "Fréquence"
+  )
+
+
+
+
+# ---------------------------------------------------------------------------------
+# fonction 2
+# --------------------------------------------------------------------------------------------
 
 # Importation du jeu de données
 data <- read.csv("C:/Quentin/Ecole/ISEN/A3/IRVE.csv")
@@ -278,8 +463,6 @@ graph_parts <- ggplot(data_operateurs, aes(x = reorder(nom_operateur, -nombre), 
 # Exportation du deuxième graphe
 ggsave("2_parts_marche_operateurs.png", plot = graph_parts, width = 8, height = 5, bg = "white")
 
-# Chargement de la librairie requise (à exécuter si ce n'est pas déjà fait plus haut)
-library(ggplot2)
 
 
 # GRAPHIQUE 3 : Répartition des puissances nominales
@@ -342,40 +525,74 @@ ggsave("4_repartition_prises.png", plot = graph_prises, width = 8, height = 5, b
 
 print("Les 4 graphiques ont été générés et sauvegardés en .png dans votre dossier de travail !")
 
-#---------------------------------------------------------------------------
-#tarification 
 
-extraire_prix_kwh <- function(texte) {
-  if (is.na(texte) || texte == "") return(NA_real_)
-  if (str_detect(texte, "inconnu|^nc$|non communiqu|^payant$|min(?:ute)?$|^http|fix")) return(NA_real_)
-  if (str_detect(texte, "\\b0[.,]?0*\\s*(eur.*)?/?kwh")) return(0.0)
+
+
+
+# ---------------------------------------------------------------------------------
+# fonction 2
+# --------------------------------------------------------------------------------------------
+
+#heatmap et clustering
+
+sf_use_s2(FALSE)
+# 1. Chargement des données
+data <- fread("C:/Users/hecto/Music/IRVE (1).csv", data.table = FALSE)
+
+# 2. Conversion en GPS
+data_sf <- data %>%
+  mutate(
+    consolidated_latitude  = as.numeric(consolidated_latitude),
+    consolidated_longitude = as.numeric(consolidated_longitude)
+  ) %>%
+  filter(!is.na(consolidated_latitude), !is.na(consolidated_longitude)) %>%
+  st_as_sf(coords = c("consolidated_longitude", "consolidated_latitude"), crs = 4326, remove = FALSE)
+
+# 3. Télécharge le contour, le REND VALIDE (anti-bug), puis le découpe sur la métropole
+france_frontiere <- ne_countries(scale = "medium", country = "France", returnclass = "sf") %>%
+  st_transform(crs = 4326) %>%
+  st_make_valid() %>% # <-- Cette ligne répare les frontières et empêche le crash
+  st_crop(st_bbox(c(xmin = -10, ymin = 40, xmax = 15, ymax = 52), crs = 4326))
+
+# 4. Tri des données (conserve uniquement ce qui intersecte la France)
+data_metropole_propre <- st_filter(data_sf, france_frontiere) %>%
+  st_drop_geometry()
+
+# 5. Création de la carte Heatmap
+carte_heatmap <- leaflet(data_metropole_propre) %>%
+  addTiles() %>% 
+  setView(lng = 2.2137, lat = 46.2276, zoom = 6) %>%
   
-  nombres <- str_extract_all(texte, "[0-9]+[.,]?[0-9]*")[[1]]
-  if (length(nombres) == 0) return(NA_real_)
+  addPolygons( # Trace le contour de la France
+    data = france_frontiere,
+    fill = FALSE,            
+    color = "#2c3e50",      
+    weight = 2,             
+    opacity = 1             
+  ) %>%
   
-  nums <- as.numeric(str_replace(nombres, ",", "."))
-  if (str_detect(texte, "c(?:t|ts?|ents?)\\s*/?\\s*kwh")) nums <- nums / 100
+  addHeatmap( # Couche de chaleur
+    lng = ~consolidated_longitude, 
+    lat = ~consolidated_latitude,
+    blur = 18,             
+    max = 0.08,             
+    radius = 12  
+  ) %>%
   
-  valides <- nums[nums >= 0.05 & nums <= 3.00]
-  if (length(valides) == 0) return(NA_real_)
-  
-  return(round(mean(valides), 4))
-}
+  addMarkers( # Marqueurs regroupés (clusters)
+    lng = ~consolidated_longitude, 
+    lat = ~consolidated_latitude,
+    clusterOptions = markerClusterOptions() 
+  )
 
-# Nettoyage + normalisation
-data[["tarification"]] <- data[["tarification"]] |>
-  str_to_lower() |>
-  str_replace_all("€", "eur") |>
-  str_replace_all("kw h", "kwh") |>
-  str_replace_all("kw\\b", "kwh") |>
-  str_trim() |>
-  sapply(extraire_prix_kwh, USE.NAMES = FALSE) 
-#str_c(" €/kWh")
+# 6. Affichage final
+carte_heatmap
 
 
 
-#-------------------------------------------------------------------------------------------
-#Bivariée
+# ---------------------------------------------------------------------------------
+# fonction 4 Bivariée
+# --------------------------------------------------------------------------------------------
 
 data_cor <- data[!is.na(data[["consolidated_latitude"]])  &
                  !is.na(data[["consolidated_longitude"]]) &
@@ -542,292 +759,3 @@ corrplot(matrice_cor, method = "color", type = "full",
 
 
 #----------------------------------------------------------------------------------------------------------------------------------------------------
-#heatmap et clustering
-
-library(dplyr)
-library(leaflet)
-library(leaflet.extras)
-library(sf)
-library(rnaturalearth)
-library(rnaturalearthdata)
-library(data.table)
-
-sf_use_s2(FALSE)
-# 1. Chargement des données
-data <- fread("C:/Users/hecto/Music/IRVE (1).csv", data.table = FALSE)
-
-# 2. Conversion en GPS
-data_sf <- data %>%
-  mutate(
-    consolidated_latitude  = as.numeric(consolidated_latitude),
-    consolidated_longitude = as.numeric(consolidated_longitude)
-  ) %>%
-  filter(!is.na(consolidated_latitude), !is.na(consolidated_longitude)) %>%
-  st_as_sf(coords = c("consolidated_longitude", "consolidated_latitude"), crs = 4326, remove = FALSE)
-
-# 3. Télécharge le contour, le REND VALIDE (anti-bug), puis le découpe sur la métropole
-france_frontiere <- ne_countries(scale = "medium", country = "France", returnclass = "sf") %>%
-  st_transform(crs = 4326) %>%
-  st_make_valid() %>% # <-- Cette ligne répare les frontières et empêche le crash
-  st_crop(st_bbox(c(xmin = -10, ymin = 40, xmax = 15, ymax = 52), crs = 4326))
-
-# 4. Tri des données (conserve uniquement ce qui intersecte la France)
-data_metropole_propre <- st_filter(data_sf, france_frontiere) %>%
-  st_drop_geometry()
-
-# 5. Création de la carte Heatmap
-carte_heatmap <- leaflet(data_metropole_propre) %>%
-  addTiles() %>% 
-  setView(lng = 2.2137, lat = 46.2276, zoom = 6) %>%
-  
-  addPolygons( # Trace le contour de la France
-    data = france_frontiere,
-    fill = FALSE,            
-    color = "#2c3e50",      
-    weight = 2,             
-    opacity = 1             
-  ) %>%
-  
-  addHeatmap( # Couche de chaleur
-    lng = ~consolidated_longitude, 
-    lat = ~consolidated_latitude,
-    blur = 18,             
-    max = 0.08,             
-    radius = 12  
-  ) %>%
-  
-  addMarkers( # Marqueurs regroupés (clusters)
-    lng = ~consolidated_longitude, 
-    lat = ~consolidated_latitude,
-    clusterOptions = markerClusterOptions() 
-  )
-
-# 6. Affichage final
-carte_heatmap
-
-#------------------------------------------------------------------------------
-#affichage nbre_pdc
-
-library(data.table)
-library(dplyr)
-library(ggplot2)
-
-data_bar <- data |>
-  filter(!is.na(nbre_pdc)) |>
-  count(nbre_pdc) |>
-  arrange(desc(n)) |>
-  slice_head(n = 10)   #on garde seulement les 10 valeurs les plus fréquentes
-
-stats_nbre_pdc <- data_bar |> #calcul moyenne et variance
-  summarise(
-    moyenne = mean(n),
-    variance = var(n)
-  )
-
-print(stats_nbre_pdc)
-
-#barplot horizontal
-ggplot(data_bar, aes(x = reorder(factor(nbre_pdc), n), y = n)) +
-  geom_col(fill = "lightgreen") +
-  coord_flip() +
-  theme_minimal() +
-  labs(
-    title = "Top 10 des valeurs de nombre de points de charge",
-    x = "Nombre de points de charge (PDC)",
-    y = "Nombre d'occurrences"
-  ) +
-  theme(legend.position = "none")
-
-#--------------------------------------------------------------------------------
-#affichage puissance nominale
-
-library(data.table)
-library(dplyr)
-library(ggplot2)
-
-
-#regroupement en classes pour voir toutes les données
-data_pie <- data |>
-  filter(!is.na(puissance_nominale)) |>
-  mutate(
-    classe = cut(
-      puissance_nominale,
-      breaks = c(0, 50, 150, 350, 1000, 5000, Inf),
-      labels = c("0–50", "50–150", "150–350", "350–1000", "1000–5000", ">5000")
-    )
-  ) |>
-  count(classe) |>
-  mutate(
-    pourcentage = n / sum(n) * 100,
-    label = paste0(classe, " (", round(pourcentage, 1), "%)")
-  )
-
-stats_puissance <- data_pie |>
-  summarise(
-    moyenne = mean(n),
-    variance = var(n)
-  )
-
-print(stats_puissance)
-
-#camembert
-ggplot(data_pie, aes(x = "", y = pourcentage, fill = classe)) +
-  geom_col(width = 1, color = "white") +
-  coord_polar(theta = "y") +
-  theme_void() +
-  labs(
-    title = "Répartition des puissances nominales (par classes)",
-    fill = "Classe (kW)"
-  ) +
-  geom_text(
-    aes(label = label),
-    position = position_stack(vjust = 0.5),
-    size = 4
-  )
-
-#------------------------------------------------------------------------------
-#affichage implantation station
-
-library(data.table)
-library(dplyr)
-library(tidyr)
-library(stringr)
-library(ggplot2)
-
-
-#nettoyage de la colonne implantation_station 
-data <- data |>
-  mutate(
-    implantation_station = str_trim(implantation_station),
-    implantation_station = case_when(
-      # Valeurs vides ou inutilisables
-      is.na(implantation_station) | implantation_station %in% c("", "/", "false", "x", "X") ~ NA_character_,
-      
-      # Corrections d'encodage
-      str_detect(implantation_station, "priv") & str_detect(implantation_station, "public") ~ 
-        "Parking privé à usage public",
-      
-      str_detect(implantation_station, "priv") & str_detect(implantation_station, "client") ~ 
-        "Parking privé réservé à la clientèle",
-      
-      # Sinon on garde la valeur telle quelle
-      TRUE ~ implantation_station
-    )
-  )
-
-#préparation des données
-data_bar <- data |>
-  filter(!is.na(implantation_station)) |>   # exclure les NA
-  count(implantation_station) |>            # compter chaque catégorie
-  arrange(n)                                # tri par fréquence
-
-#calcul de la moyenne et de la variance des fréquences 
-stats_implantation <- data_bar |>
-  summarise(
-    moyenne = mean(n),
-    variance = var(n)
-  )
-
-
-print(stats_implantation)
-
-#barplot horizontal 
-ggplot(data_bar, aes(x = reorder(implantation_station, n), y = n)) +
-  geom_col(fill = "orange") +
-  coord_flip() +
-  theme_minimal() +
-  labs(
-    title = "Répartition des types d'implantation de station",
-    x = "Type d'implantation",
-    y = "Nombre d'occurrences"
-  ) +
-  theme(legend.position = "none")
-
-#----------------------------------------------------------------------------
-#affichage tarification
-
-library(stringr)
-library(data.table)
-library(dplyr)
-library(ggplot2)
-
-
-#extraction de la colonne tarification brute
-tarification <- data$tarification
-
-#fonction de nettoyage / extraction du prix 
-extraire_prix_kwh <- function(texte) {
-  if (is.na(texte) || texte == "") return(NA_real_)
-  
-  if (str_detect(texte, "inconnu|^nc$|non communiqu|^payant$|min(?:ute)?$|^http|fix")) {
-    return(NA_real_)
-  }
-  
-  # Gratuit
-  if (str_detect(texte, "\\b0[.,]?0*\\s*(eur.*)?/?kwh")) return(0.0)
-  
-  # Extraction des nombres
-  nombres <- str_extract_all(texte, "[0-9]+[.,]?[0-9]*")[[1]]
-  if (length(nombres) == 0) return(NA_real_)
-  
-  nums <- as.numeric(str_replace(nombres, ",", "."))
-  
-  # Centimes → euros
-  if (str_detect(texte, "c(?:t|ts?|ents?)\\s*/?\\s*kwh")) {
-    nums <- nums / 100
-  }
-  
-  # Filtrage valeurs aberrantes
-  valides <- nums[nums >= 0.05 & nums <= 3.00]
-  if (length(valides) == 0) return(NA_real_)
-  
-  return(round(mean(valides), 4))
-}
-
-#nettoyage + normalisation 
-data$tarification_clean <- tarification |> 
-  str_to_lower() |> 
-  str_replace_all("€", "eur") |> 
-  str_replace_all("kw h", "kwh") |> 
-  str_replace_all("kw\\b", "kwh") |> 
-  str_trim() |> 
-  sapply(extraire_prix_kwh, USE.NAMES = FALSE)
-
-#ajout de l'unité (colonne texte)
-data$tarification <- str_c(data$tarification_clean, " €/kWh")
-
-#conversion numérique
-data$tarification_num <- data$tarification_clean
-
-#calcul des statistiques
-stats <- data %>%
-  summarise(
-    moyenne = mean(tarification_num, na.rm = TRUE),
-    variance = var(tarification_num, na.rm = TRUE)
-  )
-
-print(stats)
-
-#boxplot
-ggplot(
-  data |> filter(!is.na(tarification_num)),
-  aes(x = tarification_num)
-) +
-  geom_histogram(
-    bins = 30,
-    fill = "steelblue",
-    color = "black",
-    alpha = 0.7
-  ) +
-  theme_minimal() +
-  labs(
-    title = "Histogramme des tarifs (€/kWh)",
-    x = "Tarification (€/kWh)",
-    y = "Fréquence"
-  )
-
-#-----------------------------------------------------------------------------
-
-
-
-
