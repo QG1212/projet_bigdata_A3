@@ -24,6 +24,7 @@ library(data.table)
 library(ggplot2)
 library(tidyr)
 library(lubridate)
+library(nnet)
 
 
 #suppression
@@ -138,7 +139,7 @@ data[["puissance_nominale"]][data[["puissance_nominale"]] >400 ] = NA
 
 
 
-data <- read.csv("C:/Users/hecto/Music/IRVE (1).csv", sep = ",", stringsAsFactors = FALSE)
+#data <- read.csv("C:/Users/hecto/Music/IRVE (1).csv", sep = ",", stringsAsFactors = FALSE)
 
 # 2. Filtrage intelligent par "Blocs Géographiques" (Métropole + Corse)
 data_metropole_propre <- data %>%
@@ -530,7 +531,7 @@ print("Les 4 graphiques ont été générés et sauvegardés en .png dans votre 
 
 
 # ---------------------------------------------------------------------------------
-# fonction 2
+# fonction 3
 # --------------------------------------------------------------------------------------------
 
 #heatmap et clustering
@@ -611,7 +612,7 @@ cor.test(data_cor[["consolidated_latitude"]],  data_cor[["puissance_nominale"]])
 cor.test(data_cor[["consolidated_longitude"]], data_cor[["puissance_nominale"]])
 cor.test(data_cor[["consolidated_longitude"]], data_cor[["puissance_nominale"]])
 
-
+#variable quanti
 # PUISSANCE VS PRIX tarification 
 cor.test(data_cor[["tarification"]], data_cor[["puissance_nominale"]], method = "spearman")
 
@@ -636,14 +637,7 @@ ggplot(data_cor, aes(x = consolidated_longitude, y = consolidated_latitude, colo
 
 
 
-#IMPLANTATION vs NOMBRE DE PDC
-
-
-# Moyenne par groupe
-for (type in unique(data_cor[["implantation_station"]])) {
-  lignes <- data_cor[data_cor[["implantation_station"]] == type, ]
-  cat(type, "-> moyenne PDC:", round(mean(lignes[["nbre_pdc"]]), 1), "\n")
-}
+#IMPLANTATION vs nb pc
 
 # Discrétisation nbre_pdc pour chi2 + mosaicplot
 data_cor[["taille_station"]] <- cut(data_cor[["nbre_pdc"]],
@@ -665,7 +659,7 @@ cramer_v <- function(tbl) {
   k    <- min(nrow(tbl), ncol(tbl))
   sqrt(chi2 / (n * (k - 1)))
 }
-cat("V de Cramér :", round(cramer_v(tab2), 3), "\n")
+
 
 
 ggplot(data_cor, aes(x = implantation_station, y = nbre_pdc)) +
@@ -675,14 +669,7 @@ ggplot(data_cor, aes(x = implantation_station, y = nbre_pdc)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
-# 4. IMPLANTATION vs PUISSANCE
-
-# Moyenne par groupe
-for (type in unique(data_cor[["implantation_station"]])) {
-  lignes <- data_cor[data_cor[["implantation_station"]] == type, ]
-  cat(type, "-> puissance moyenne:", round(mean(lignes[["puissance_nominale"]]), 1), "kW\n")
-}
-
+# IMPLANTATION VS PUISSANCE
 # Kruskal-Wallis (> 2 groupes, non paramétrique)
 kruskal.test(puissance_nominale ~ implantation_station, data = data_cor)
 
@@ -693,8 +680,7 @@ ggplot(data_cor, aes(x = implantation_station, y = puissance_nominale)) +
        x = "Implantation", y = "Puissance (kW)") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-# RACCORDEMENT vs PUISSANCE
-
+# RACCORDEMENT VS PUISSANCE
 
 # Wilcoxon (2 groupes, non paramétrique )
 wilcox.test(puissance_nominale ~ raccordement, data = data_cor)
@@ -706,7 +692,7 @@ ggplot(data_cor, aes(x = raccordement, y = puissance_nominale)) +
        x = "Raccordement", y = "Puissance moyenne (kW)")
 
 
-# ── implantation vs tarification
+#implantation vs tarif
 kruskal.test(tarification ~ implantation_station, data = data_cor)
 
 ggplot(data_cor[!is.na(data_cor[["implantation_station"]]) & !is.na(data_cor[["tarification"]]), ],
@@ -716,7 +702,7 @@ ggplot(data_cor[!is.na(data_cor[["implantation_station"]]) & !is.na(data_cor[["t
        x = "Implantation", y = "Tarification (€/kWh)") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-# ── raccordement vs tarification
+#raccordement vs tarif
 wilcox.test(tarification ~ raccordement, data = data_cor)
 
 ggplot(data_cor, aes(x = raccordement, y = tarification)) +
@@ -724,21 +710,7 @@ ggplot(data_cor, aes(x = raccordement, y = tarification)) +
   labs(title = "Raccordement vs Tarification",
        x = "Raccordement", y = "Tarification (€/kWh)")
 
-
-# 6. VARIABLES QUALITATIVES : chi2 + mosaicplot
-
-
-# ── implantation vs raccordement
-tab3 <- table(data_cor[["implantation_station"]], data_cor[["raccordement"]])
-print(tab3)
-chisq.test(tab3)
-cat("V de Cramér :", round(cramer_v(tab3), 3), "\n")
-mosaicplot(tab3, main = "Implantation vs Raccordement",
-           color = c("lightblue", "pink"), las = 2)
-
-mosaicplot(tab2, main = "Implantation vs Taille de station",
-           color = c("blue", "violet", "pink"), las = 2)
-
+#annee vs nb station
 ggplot(data_cor, aes(x = annee)) +
   geom_bar(fill = "lightblue") +
   labs(title = "Nombre de stations mises en service par année",
@@ -746,6 +718,19 @@ ggplot(data_cor, aes(x = annee)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
+#variable quali : chi2 + mosaicplot
+#implantation vs raccordement
+tab3 <- table(data_cor[["implantation_station"]], data_cor[["raccordement"]])
+print(tab3)
+chisq.test(tab3)
+mosaicplot(tab3, main = "Implantation vs Raccordement",
+           color = c("lightblue", "pink"), las = 2)
+
+mosaicplot(tab2, main = "Implantation vs Taille de station",
+           color = c("blue", "violet", "pink"), las = 2)
+
+
+#matrice
 data_matrice <- data_cor[, c("puissance_nominale", "nbre_pdc", "tarification",
                              "consolidated_latitude", "consolidated_longitude",
                              "charge_rapide", "annee")]
@@ -758,12 +743,11 @@ corrplot(matrice_cor, method = "color", type = "full",
          title = "Matrice de corrélation", mar = c(0, 0, 2, 0))
 
 
-# ==============================================================================
-# Fonctionnalité 5 : regressions 
-# ==============================================================================
 
-library(nnet)
-data <- read.csv("C:/Quentin/Ecole/ISEN/A3/IRVE.csv")
+# Fonctionnalité 5 : regressions 
+#---------------------------------------------------------------------
+
+#data <- read.csv("C:/Quentin/Ecole/ISEN/A3/IRVE.csv")
 
 # CRÉATION DE LA VARIABLE "charge_rapide"
 # Selon la matrice de corrélation, on crée une variable binaire :
@@ -813,9 +797,9 @@ print("Vérification des groupes créés pour la régression logistique :")
 print(table(data$tarification_groupe))
 
 
-# ==============================================================================
+#-----------------------------------------------------------------------------------
 # 5. MODÈLE 2 : RÉGRESSION LOGISTIQUE MULTINOMIALE (Tarification)
-# ==============================================================================
+# -------------------------------------------------------------------
 
 # On lance le modèle sur la nouvelle colonne nettoyée "tarification_groupe"
 modele_logistique <- multinom(tarification_groupe ~ puissance_nominale + nbre_pdc, data = data)
