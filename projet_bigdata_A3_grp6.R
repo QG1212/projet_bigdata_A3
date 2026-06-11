@@ -14,10 +14,12 @@ library(data.table)
 
 install.packages("stringr") 
 install.packages("dplyr")
-install.packages("tidyverse") 
+install.packages("tidyverse")
+install.packages("corrplot") 
 library(tidyverse)
 library(stringr)
 library(dplyr)
+library(corrplot)
 
 
 #suppression
@@ -37,10 +39,7 @@ data <- data[!duplicated(data[["id_pdc_itinerance"]]), ]
 
 # Mots considérés comme non pertinents
 mots_vides <- c(
-  "inconnu", "inconnue", "sans", "xx", "/", "restriction de gabarit non précisée", 
-  "accessibilité inconnue", "neant", "néant", "non concerné", "non communiqué", 
-  "non précisé", "non renseigné", "unknown", "n/a", "na", "none", "null", 
-  "-", "?", "", "aucune observations", "aucune observation"
+  "sans", "xx" ,"inconnu", "inconnue","Inconnu","Accessibilitˇ inconnu","Accessibilit\u008e inconnue","0000", "Accessibilit inconnue","Accessibilit\u0087 inconnue","AccessibilitĂ\u00a9 inconnue","Restriction de gabarit non précisée","restriction gabarit inconnue", "Non concerné","no information","Restriction de gabarit non pr\u008ecis\u008ee","Restriction de gabarit non prÃ©cisÃ©e","restriction gabarit inconnues","accessibilité inconnue","Accessibilité inconnue","Inconnue","NEANT","Néant","non concerné", "Non communiqué","non précisé","non renseigné","Non renseigné","unknown", "n/a", "na", "none", "null", "-", "?", "","/","Non communiqué","Non concerné ","aucune observations","aucune observation"
 )
 
 # Règle de nettoyage de donnée
@@ -98,22 +97,6 @@ lapply(data, unique)
 View(data)
 
 
-#trouver sur le site du gouv https://doc.transport.data.gouv.fr/type-donnees/infrastructures-de-recharge-de-vehicules-electriques-irve/beta-base-nationale-irve-statique
-liste_bool=c("prise_type_ef","prise_type_2","prise_type_combo_css","prise_type_combo_ccs","prise_type_chademo","prise_type_autre","gratuit","paiement_acte","paiement_cb","paiement_autre","reservation","station_deux_roues","cable_t2_attache", "consolidated_is_lon_lat_correct")
-
-for (col in liste_bool) {
-  #evite les chiffre
-  if (is.character(data[[col]])){  
-    
-    t_minus =tolower(data[[col]])
-    data[[col]][t_minus == "true"] = TRUE
-    
-    # Oremplace 
-    data[[col]][t_minus == "false"] = FALSE
-  }
-}
-View(data)
-
 
 #trouver sur le site du gouv https://doc.transport.data.gouv.fr/type-donnees/infrastructures-de-recharge-de-vehicules-electriques-irve/beta-base-nationale-irve-statique
 liste_bool=c("prise_type_ef","prise_type_2","prise_type_combo_css","prise_type_combo_ccs","prise_type_chademo","prise_type_autre","gratuit","paiement_acte","paiement_cb","paiement_autre","reservation","station_deux_roues","cable_t2_attache", "consolidated_is_lon_lat_correct")
@@ -142,7 +125,10 @@ data$condition_acces <- ifelse(tolower(data$condition_acces) == "accès réserv�
 data[["implantation_station"]][data[["implantation_station"]] == "Parking priv\u008e \u0088 usage public"] = "Parking privé à usage public"
 
 data[["implantation_station"]][data[["implantation_station"]] == "Parking priv\u008e r\u008eserv\u008e \u0088 la client\u008fle"] = "Parking privé réservé à la clientèle"
-
+#https://www.bppulse.com/fr-fr/centre-de-contenu/tout-savoir-sur-la-charge-rapide
+#https://www.automobile-propre.com/dossiers/borne-de-recharge-electrique-le-guide-complet-2024/
+data[["puissance_nominale"]][data[["puissance_nominale"]] < 1]= NA
+data[["puissance_nominale"]][data[["puissance_nominale"]] >400 ] = NA
 
 
 
@@ -406,4 +392,179 @@ data$tarification <- tarification |>
   str_trim() |> 
   sapply(extraire_prix_kwh, USE.NAMES = FALSE) |> 
   str_c(" €/kWh")
+
+
+
+#-------------------------------------------------------------------------------------------
+#Bivariée
+
+df_cor <- data[!is.na(data[["consolidated_latitude"]])  &
+                 !is.na(data[["consolidated_longitude"]]) &
+                 !is.na(data[["nbre_pdc"]])               &
+                 !is.na(data[["puissance_nominale"]])      &
+                 !is.na(data[["implantation_station"]])    &
+                 !is.na(data[["raccordement"]])            &
+                 !is.na(data[["date_mise_en_service"]])            &
+                 !is.na(data[["tarification"]])            , ]
+df_cor[["annee"]]        <- as.numeric(format(as.Date(df_cor[["date_mise_en_service"]]), "%Y"))
+df_cor[["charge_rapide"]] <- as.numeric(df_cor[["puissance_nominale"]] > 22)
+
+cor.test(df_cor[["consolidated_latitude"]],  df_cor[["nbre_pdc"]])
+cor.test(df_cor[["consolidated_longitude"]], df_cor[["nbre_pdc"]])
+cor.test(df_cor[["consolidated_latitude"]],  df_cor[["puissance_nominale"]])
+cor.test(df_cor[["consolidated_longitude"]], df_cor[["puissance_nominale"]])
+cor.test(df_cor[["consolidated_longitude"]], df_cor[["puissance_nominale"]])
+
+
+# PUISSANCE VS PRIX tarification 
+cor.test(df_cor[["tarification"]], df_cor[["puissance_nominale"]], method = "spearman")
+
+# Visualisation
+ggplot(df_cor, aes(x = as.factor(charge_rapide), y = tarification)) +
+  geom_boxplot(fill = c("lightblue", "pink")) +
+  labs(title = "Puissance vs Tarification",
+       x = "Charge rapide (0=Non, 1=Oui)", y = "Tarification (€/kWh)")
+
+# LOCA {(xy)} VS EQUIPEMENT nbre_pdc
+
+cor.test(df_cor[["consolidated_latitude"]],  df_cor[["nbre_pdc"]])
+cor.test(df_cor[["consolidated_longitude"]], df_cor[["nbre_pdc"]])
+cor.test(df_cor[["consolidated_latitude"]],  df_cor[["puissance_nominale"]])
+cor.test(df_cor[["consolidated_longitude"]], df_cor[["puissance_nominale"]])
+
+ggplot(df_cor, aes(x = consolidated_longitude, y = consolidated_latitude, color = nbre_pdc)) +
+  geom_point(alpha = 0.5) +
+  scale_color_gradient(low = "blue", high = "red") +
+  labs(title = "Localisation vs Nombre de points de charge",
+       x = "Longitude", y = "Latitude", color = "Nombre de PDC")
+
+
+
+#IMPLANTATION vs NOMBRE DE PDC
+
+
+# Moyenne par groupe
+for (type in unique(df_cor[["implantation_station"]])) {
+  lignes <- df_cor[df_cor[["implantation_station"]] == type, ]
+  cat(type, "-> moyenne PDC:", round(mean(lignes[["nbre_pdc"]]), 1), "\n")
+}
+
+# Discrétisation nbre_pdc pour chi2 + mosaicplot
+df_cor[["taille_station"]] <- cut(df_cor[["nbre_pdc"]],
+                                  breaks = c(0, 1, 4, Inf),
+                                  labels = c("Petite (1 PDC)", "Moyenne (2-4 PDC)", "Grande (5+ PDC)"))
+
+df_cor[["implantation_simple"]] <- df_cor[["implantation_station"]]
+df_cor[["implantation_simple"]][df_cor[["implantation_station"]] == "Parking privé réservé à la clientèle"] <- "Autre"
+df_cor[["implantation_simple"]][df_cor[["implantation_station"]] == "Station dédiée à la recharge rapide"] <- "Autre"
+
+tab2 <- table(df_cor[["implantation_simple"]], df_cor[["taille_station"]])
+print(tab2)
+chisq.test(tab2)
+
+# V de Cramer : intensité de l'association, le chi2 dit juste y a  un lien ? (oui/non via p-value) V de Cramér= ce lien est fort ou faible ? 
+cramer_v <- function(tbl) {
+  chi2 <- chisq.test(tbl)$statistic
+  n    <- sum(tbl)
+  k    <- min(nrow(tbl), ncol(tbl))
+  sqrt(chi2 / (n * (k - 1)))
+}
+cat("V de Cramér :", round(cramer_v(tab2), 3), "\n")
+
+
+ggplot(df_cor, aes(x = implantation_station, y = nbre_pdc)) +
+  geom_boxplot(fill = "lightblue") +
+  labs(title = "Implantation vs Nb points de charge",
+       x = "Implantation", y = "Nb de PDC") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+# 4. IMPLANTATION vs PUISSANCE
+
+# Moyenne par groupe
+for (type in unique(df_cor[["implantation_station"]])) {
+  lignes <- df_cor[df_cor[["implantation_station"]] == type, ]
+  cat(type, "-> puissance moyenne:", round(mean(lignes[["puissance_nominale"]]), 1), "kW\n")
+}
+
+# Kruskal-Wallis (> 2 groupes, non paramétrique)
+kruskal.test(puissance_nominale ~ implantation_station, data = df_cor)
+
+ggplot(df_cor, aes(x = implantation_station, y = puissance_nominale)) +
+  stat_summary(fun = mean, geom = "point", size = 4, color = "blue") +
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar", width = 0.2, color = "red") +
+  labs(title = "Implantation vs Puissance (moyenne ± IC)",
+       x = "Implantation", y = "Puissance (kW)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# RACCORDEMENT vs PUISSANCE
+
+
+# Wilcoxon (2 groupes, non paramétrique )
+wilcox.test(puissance_nominale ~ raccordement, data = df_cor)
+
+
+ggplot(df_cor, aes(x = raccordement, y = puissance_nominale)) +
+  geom_bar(stat = "summary", fun = "mean", fill = c("lightblue", "pink")) +
+  labs(title = "Raccordement vs Puissance moyenne",
+       x = "Raccordement", y = "Puissance moyenne (kW)")
+
+
+# ── implantation vs tarification
+kruskal.test(tarification ~ implantation_station, data = df_cor)
+
+ggplot(df_cor[!is.na(df_cor[["implantation_station"]]) & !is.na(df_cor[["tarification"]]), ],
+       aes(x = implantation_station, y = tarification)) +
+  geom_boxplot(fill = "lightblue") +
+  labs(title = "Implantation vs Tarification",
+       x = "Implantation", y = "Tarification (€/kWh)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# ── raccordement vs tarification
+wilcox.test(tarification ~ raccordement, data = df_cor)
+
+ggplot(df_cor, aes(x = raccordement, y = tarification)) +
+  geom_boxplot(fill = c("lightblue", "pink")) +
+  labs(title = "Raccordement vs Tarification",
+       x = "Raccordement", y = "Tarification (€/kWh)")
+
+
+# 6. VARIABLES QUALITATIVES : chi2 + mosaicplot
+
+
+# ── implantation vs raccordement
+tab3 <- table(df_cor[["implantation_station"]], df_cor[["raccordement"]])
+print(tab3)
+chisq.test(tab3)
+cat("V de Cramér :", round(cramer_v(tab3), 3), "\n")
+mosaicplot(tab3, main = "Implantation vs Raccordement",
+           color = c("lightblue", "pink"), las = 2)
+
+mosaicplot(tab2, main = "Implantation vs Taille de station",
+           color = c("blue", "violet", "pink"), las = 2)
+
+ggplot(df_cor, aes(x = annee)) +
+  geom_bar(fill = "lightblue") +
+  labs(title = "Nombre de stations mises en service par année",
+       x = "Année", y = "Nombre de stations") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+df_matrice <- df_cor[, c("puissance_nominale", "nbre_pdc", "tarification",
+                         "consolidated_latitude", "consolidated_longitude",
+                         "charge_rapide", "annee")]
+
+matrice_cor <- cor(df_matrice, method = "spearman")
+
+corrplot(matrice_cor, method = "color", type = "full",
+         addCoef.col = "black", tl.col = "black", tl.srt = 45,
+         tl.cex = 0.7,
+         title = "Matrice de corrélation", mar = c(0, 0, 2, 0))
+
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
 
