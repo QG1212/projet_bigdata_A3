@@ -340,6 +340,8 @@ ggplot(
 # GRAPHIQUE 1 : Évolution du nombre de stations mises en service
 
 
+# GRAPHIQUE 1 : Évolution du nombre de stations mises en service
+
 # Nouvelle colonne pour isoler des variables
 data_evolution <- mutate(
   data, 
@@ -348,6 +350,9 @@ data_evolution <- mutate(
   # Force toutes les dates au premier jour de leur mois (pour grouper par mois)
   annee_mois = floor_date(date_service, "month")
 )
+
+data_evolution <- filter(data_evolution, year(date_service) >= 2010 & date_service <= Sys.Date())
+
 
 # On affiche selon cette nouvelle colonne
 data_evolution <- group_by(data_evolution, annee_mois)
@@ -453,7 +458,6 @@ graph_puissance <- ggplot(data, aes(x = puissance_nominale)) +
 ggsave("3_histogramme_puissance.png", plot = graph_puissance, width = 8, height = 5, bg = "white")
 
 
-
 # GRAPHIQUE 4 : Répartition des types de prises (Diagramme à barres)
 
 # On sélectionne uniquement les colonnes "prise_type_..." dans le tab d'origine
@@ -462,32 +466,42 @@ selectC <- select(data, starts_with("prise_type_"))
 # On transforme plusieurs colonnes en deux
 formatC <- pivot_longer(selectC, cols = everything(), names_to = "type_prise", values_to = "est_present")
 
-# On garder les lignes où la prise est présente 
-filtre <- filter(formatC, tolower(as.character(est_present)) == "true")
+# --- CORRECTION DU FILTRE ---
+# 1. On force en texte, on passe en minuscules, et on enlève les espaces invisibles avec trimws()
+formatC <- mutate(formatC, valeur_propre = trimws(tolower(as.character(est_present))))
+
+# 2. On garde "true" (ou vrai, ou 1, pour anticiper tout problème de formature de R)
+filtre <- filter(formatC, valeur_propre %in% c("true", "vrai", "1", "oui"))
+
+# 3. On supprime les éventuelles valeurs manquantes (NA)
+filtre <- drop_na(filtre, type_prise)
+# ----------------------------
 
 # On regroupe les données par "type_prise"
 groupeD <- group_by(filtre, type_prise)
 
-# On compte le nombre de lignes pour chaque groupe et on stocke ce total dans une nouvelle colonne "quantite"
+# On compte le nombre de lignes pour chaque groupe et on stocke ce total
 comptage <- summarise(groupeD, quantite = n())
 
-# On nettoie la colonne "type_prise" 
+# On nettoie la colonne "type_prise" (on enlève le préfixe)
 data_prises <- mutate(comptage, type_prise = gsub("prise_type_", "", type_prise))
 
 
-# On initialise le graphique avec nos données finales, en triant l'axe X du plus grand au plus petit (-quantite)
+# On initialise le graphique avec nos données finales
 graph_prises <- ggplot(data_prises, aes(x = reorder(type_prise, -quantite), y = quantite)) +
   # diagramme orange
   geom_col(fill = "#E69F00") +
   # titre x y
   labs(title = "Répartition par type de prise", x = "Type de prise", y = "Quantité totale") +
   # thème simple
-  theme_minimal()
+  theme_minimal() +
+  # BONUS : Inclinaison à 45° pour éviter que les noms des prises ne se chevauchent !
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 # Exportation des données
 ggsave("4_repartition_prises.png", plot = graph_prises, width = 8, height = 5, bg = "white")
 
-print("Les 4 graphiques ont été générés et sauvegardés en .png dans votre dossier de travail !")
+print("Le graphique 4 a été généré avec succès !")
 
 
 
