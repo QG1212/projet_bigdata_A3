@@ -286,7 +286,6 @@ ggplot(data_bar, aes(x = reorder(implantation_station, n), y = n)) +
   ) +
   theme(legend.position = "none")
 
-#----------------------------------------------------------------------------
 #affichage tarification
 
 
@@ -294,13 +293,13 @@ ggplot(data_bar, aes(x = reorder(implantation_station, n), y = n)) +
 tarification <- data$tarification
 
 
-#ajout de l'unité (colonne texte)
-data$tarification <- str_c(data$tarification_clean, " €/kWh")
+# On crée la colonne numérique en copiant les données propres existantes
+data$tarification_num <- data$tarification
 
-#conversion numérique
-data$tarification_num <- data$tarification_clean
+# On ajoute l'unité (texte) à la colonne d'origine pour l'affichage
+data$tarification <- str_c(data$tarification, " €/kWh")
 
-#calcul des statistiques
+# Calcul des statistiques (Ton code reste identique ici)
 stats <- data %>%
   summarise(
     moyenne = mean(tarification_num, na.rm = TRUE),
@@ -310,6 +309,10 @@ stats <- data %>%
 print(stats)
 
 #boxplot
+# 1. On force la colonne à être reconnue comme des valeurs numériques
+data$tarification_num <- as.numeric(data$tarification_num)
+
+# 2. On lance l'histogramme
 ggplot(
   data |> filter(!is.na(tarification_num)),
   aes(x = tarification_num)
@@ -326,7 +329,6 @@ ggplot(
     x = "Tarification (€/kWh)",
     y = "Fréquence"
   )
-
 
 
 
@@ -670,7 +672,7 @@ mosaicplot(tab3, main = "Implantation vs Raccordement",color = c("lightblue", "p
 mosaicplot(tab2, main = "Implantation vs Taille de station", color = c("blue", "violet", "pink"), las = 2)
 
 
-#code: Anaelle - corriger par ia , erreure recurente 
+#code: Anaelle - corrigé par ia , erreur recurente 
 #matrice
 data_matrice <- data_cor[, c("puissance_nominale", "nbre_pdc", "tarification","consolidated_latitude", "consolidated_longitude","charge_rapide", "annee")]
 matrice_cor <- cor(data_matrice, method = "spearman")
