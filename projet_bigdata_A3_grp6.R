@@ -35,6 +35,7 @@ library(data.table)
 # Fonctionnalité 1 Trie
 # ------------------------------------------------------------------------------
 
+#code: Anaelle - corrigé par ia , surtout comprendre les erreurs
 #suppression de ligne
 #https://doc.transport.data.gouv.fr/type-donnees/infrastructures-de-recharge-de-vehicules-electriques-irve/beta-base-nationale-irve-statique
 data <- data[data[["id_pdc_itinerance"]] != "Non concerné", ]
@@ -57,6 +58,8 @@ for (col in colnames(data)) {
   }
 }
 
+
+#code: Quentin - corrigé par ia 
 for (i in 1:nrow(data)) {
   val =data[["restriction_gabarit"]][i]
   #si la val est NA on passe à la suivante
@@ -76,7 +79,7 @@ for (i in 1:nrow(data)) {
 #lapply(data, unique)
 
 
-
+#code: Anaelle - corrigé par ia 
 #trouver sur le site du gouv https://doc.transport.data.gouv.fr/type-donnees/infrastructures-de-recharge-de-vehicules-electriques-irve/beta-base-nationale-irve-statique
 liste_bool=c("prise_type_ef","prise_type_2","prise_type_combo_css","prise_type_combo_ccs","prise_type_chademo","prise_type_autre","gratuit","paiement_acte","paiement_cb","paiement_autre","reservation","station_deux_roues","cable_t2_attache", "consolidated_is_lon_lat_correct")
 for (col in liste_bool) {
@@ -107,7 +110,7 @@ data[["puissance_nominale"]][data[["puissance_nominale"]] < 1]= NA
 data[["puissance_nominale"]][data[["puissance_nominale"]] >400 ] = NA
 
 
-
+#code: Hector - aidé par ia, plot sans ia
 #tarification 
 
 extraire_prix_kwh <- function(texte) {
@@ -331,10 +334,7 @@ ggplot(
 # fonction 2
 # --------------------------------------------------------------------------------------------
 
-# Importation du jeu de données
-data <- read.csv("C:/Quentin/Ecole/ISEN/A3/IRVE.csv")
-
-
+#code: Quentin - corriger par ia 
 # GRAPHIQUE 1 : Évolution du nombre de stations mises en service
 
 
@@ -495,6 +495,7 @@ print("Les 4 graphiques ont été générés et sauvegardés en .png dans votre 
 # fonction 3
 # --------------------------------------------------------------------------------------------
 
+#code: Hector - aidé par ia
 #heatmap et clustering
 
 sf_use_s2(FALSE)
@@ -540,6 +541,8 @@ carte_heatmap
 # ---------------------------------------------------------------------------------
 # fonction 4 Bivariée
 # --------------------------------------------------------------------------------------------
+
+#code: Anaelle - fait a la main
 #2 variables numériques = cor.test(spearman, ne suit pas une loi normal)
 #1 quali (2 groupes) vs 1 numérique =wilcox.test
 #1 quali (3+ groupes) vs 1 numérique =kruskal.test
@@ -565,13 +568,14 @@ cor.test(data_cor[["consolidated_longitude"]], data_cor[["puissance_nominale"]])
 cor.test(data_cor[["consolidated_longitude"]], data_cor[["puissance_nominale"]])
 
 #variable quanti
+#code: Anaelle - expliquer par mathis et cyriac
 # PUISSANCE VS PRIX tarification 
 cor.test(data_cor[["tarification"]], data_cor[["puissance_nominale"]], method = "spearman")
 #visu
 ggplot(data_cor, aes(x = as.factor(charge_rapide), y = tarification)) +
   geom_boxplot(fill = c("lightblue", "pink")) +
   labs(title = "Puissance vs Tarification",
-       x = "Charge rapide (0=Non, 1=Oui)", y = "Tarification")
+       x = "Charge rapide (0=Non,1=Oui)", y = "Tarification")
 
 # LOCA {(xy)} VS EQUIPEMENT nbre_pdc
 
@@ -601,7 +605,7 @@ tab2 <- table(data_cor[["implantation_simple"]], data_cor[["taille_station"]])
 print(tab2)
 chisq.test(tab2)
 
-# V de Cramer : intensité de l'association, le chi2 dit juste y a  un lien ? (oui/non via p-value) V de Cramér= ce lien est fort ou faible ? 
+# V de Cramer : intensité de l'association, le chi2 dit juste y a  un lien  (p-value < 0.05  =oui il y a un lien p-value > 0.05  -> pas de lien significatif), V de Cramér= ce lien est fort ou faible ? 
 cat("V de Cramér :", round(sqrt(chisq.test(tab2)$statistic / (sum(tab2) * (min(nrow(tab2), ncol(tab2)) - 1))), 3), "\n")
 
 
@@ -621,7 +625,7 @@ ggplot(data_cor, aes(x = implantation_station, y = puissance_nominale)) +stat_su
 
 # RACCORDEMENT VS PUISSANCE
 
-# Wilcoxon (2 groupes, non paramétrique )
+# Wilcoxon (, non paramétrique )
 wilcox.test(puissance_nominale ~ raccordement, data = data_cor)
 
 ggplot(data_cor, aes(x = raccordement, y = puissance_nominale)) +
@@ -666,6 +670,7 @@ mosaicplot(tab3, main = "Implantation vs Raccordement",color = c("lightblue", "p
 mosaicplot(tab2, main = "Implantation vs Taille de station", color = c("blue", "violet", "pink"), las = 2)
 
 
+#code: Anaelle - corriger par ia , erreure recurente 
 #matrice
 data_matrice <- data_cor[, c("puissance_nominale", "nbre_pdc", "tarification","consolidated_latitude", "consolidated_longitude","charge_rapide", "annee")]
 matrice_cor <- cor(data_matrice, method = "spearman")
@@ -675,6 +680,7 @@ corrplot(matrice_cor, method = "color", type = "full",addCoef.col = "black", tl.
 
 # Fonctionnalité 5 : regressions 
 #---------------------------------------------------------------------
+#code: Quentin - corrigé par ia
 
 #data <- read.csv("C:/Quentin/Ecole/ISEN/A3/IRVE.csv")
 
