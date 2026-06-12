@@ -766,7 +766,6 @@ modele_logistique <- multinom(tarification_groupe ~ puissance_nominale + nbre_pd
 
 print("--- Résumé de la régression logistique ---")
 summary(modele_logistique)
-
 # -------------------------------------------------------------------
 # 5. ÉVALUATION DU MODÈLE : MATRICE DE CONFUSION
 # -------------------------------------------------------------------
@@ -783,9 +782,45 @@ matrice_detaillee <- confusionMatrix(data = predictions_logistique, reference = 
 print(matrice_detaillee)
 
 # -------------------------------------------------------------------
+# 5. BIS : VISUALISATION DU MODÈLE LOGISTIQUE
+# -------------------------------------------------------------------
+
+
+# 1. Créer un jeu de données fictif pour la prédiction
+nouvelles_donnees <- data.frame(
+  puissance_nominale = seq(min(data_logistique$puissance_nominale, na.rm = TRUE), 
+                           max(data_logistique$puissance_nominale, na.rm = TRUE), 
+                           length.out = 100),
+  nbre_pdc = median(data_logistique$nbre_pdc, na.rm = TRUE)
+)
+
+# 2. Calculer les probabilités prédites par le modèle
+probabilites <- predict(modele_logistique, newdata = nouvelles_donnees, type = "probs")
+
+# 3. Fusionner et restructurer les données pour le graphique
+donnees_graphique <- cbind(nouvelles_donnees, probabilites)
+donnees_long <- pivot_longer(donnees_graphique, 
+                             cols = c("bas", "modéré", "élevé"), 
+                             names_to = "Tarification", 
+                             values_to = "Probabilite")
+
+# 4. Créer et afficher le graphique
+graphique_logistique <- ggplot(donnees_long, aes(x = puissance_nominale, y = Probabilite, color = Tarification)) +
+  geom_line(linewidth = 1) +
+  scale_color_manual(values = c("bas" = "#00BFC4", "modéré" = "#F8766D", "élevé" = "#C77CFF")) +
+  labs(title = "Évolution de la tarification selon la puissance nominale",
+       subtitle = "Prédictions du modèle logistique (Nombre de PDC fixé à la médiane)",
+       x = "Puissance Nominale",
+       y = "Probabilité prédite",
+       color = "Groupe de tarification") +
+  theme_minimal()
+
+print(graphique_logistique)
+
+# -------------------------------------------------------------------
 # 6. EXPORT DES DONNÉES
 # -------------------------------------------------------------------
 
-# Exporter le dataframe finalisé en format CSV (correction du nom de la variable : data au lieu de data_cor)
+# Exporter le dataframe finalisé en format CSV
 write.csv(data, file = "donnees_nettoyees.csv", row.names = FALSE)
 write.csv2(data, file = "donnees_nettoyees_excel.csv", row.names = FALSE, fileEncoding = "latin1")
