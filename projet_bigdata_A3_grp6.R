@@ -679,157 +679,99 @@ matrice_cor <- cor(data_matrice, method = "spearman")
 corrplot(matrice_cor, method = "color", type = "full",addCoef.col = "black", tl.col = "black", tl.srt = 45,tl.cex = 0.7, title = "Matrice de corrélation", mar = c(0, 0, 2, 0))
 
 
-# Fonctionnalité 5 : regressions 
-#---------------------------------------------------------------------
+# ===================================================================
+# FONCTIONNALITÉ 5 : RÉGRESSIONS ET PRÉDICTIONS
+# ===================================================================
 
-#data <- read.csv("C:/Quentin/Ecole/ISEN/A3/IRVE.csv")
+# Chargement des librairies nécessaires
+# install.packages("nnet")
+# install.packages("caret")
+library(nnet)
+library(caret)
 
-# CRÉATION DE LA VARIABLE "charge_rapide"
-# Selon la matrice de corrélation, on crée une variable binaire :
-# 1 si la puissance est supérieure ou égale à 50 kW (charge rapide), sinon 0.
+# -------------------------------------------------------------------
+# 1. CRÉATION DE LA VARIABLE "charge_rapide"
+# -------------------------------------------------------------------
+# /!\ ATTENTION BIAIS : Créer cette variable à partir de la puissance nominale 
+# puis l'utiliser pour prédire cette même puissance nominale (Modèle 1) 
+# va artificiellement gonfler la performance de la régression.
 data$charge_rapide <- ifelse(data$puissance_nominale >= 50, 1, 0)
 
-
-
-# MODÈLE 1 : RÉGRESSION LINÉAIRE MULTIPLE (Puissance Nominale)
-
-# On prédit la "puissance_nominale" grâce à "charge_rapide" et "nbre_pdc"
+# -------------------------------------------------------------------
+# 2. MODÈLE 1 : RÉGRESSION LINÉAIRE MULTIPLE (Puissance Nominale)
+# -------------------------------------------------------------------
 modele_lineaire <- lm(puissance_nominale ~ charge_rapide + nbre_pdc, data = data)
 
 # Affichage des coefficients et de l'efficacité du modèle linéaire
+print("--- Résumé de la régression linéaire ---")
 summary(modele_lineaire)
 
-
-
-# 4. SÉCURISATION ET PRÉPARATION DE LA VARIABLE "tarification"
-
-# Étape A : On force R à essayer de convertir le texte de tarification en vrais chiffres
-tarification_forcee_num <- as.numeric(as.character(data$tarification))
-
-# Étape B : Test de sécurité automatique
-if (sum(!is.na(tarification_forcee_num)) > 0) {
-  
-  # --- SCÉNARIO A : Si la colonne contient des prix ou des chiffres ---
-  # On calcule automatiquement les seuils pour couper équitablement en 3 tiers
-  seuils <- quantile(tarification_forcee_num, probs = c(0, 0.33, 0.66, 1), na.rm = TRUE)
-  
-  # On crée les 3 groupes demandés : bas, modéré, élevé
-  data$tarification_groupe <- cut(tarification_forcee_num, 
-                                  breaks = seuils, 
-                                  labels = c("bas", "modéré", "élevé"), 
-                                  include.lowest = TRUE)
-  
-} else {
-  
-  # --- SCÉNARIO B : Si la colonne contient déjà du texte (ex: "Gratuit", "Payant") ---
-  # On transforme simplement la colonne d'origine en catégories pour R
-  data$tarification_groupe <- as.factor(data$tarification)
-  
-}
-
-# Étape C : Petite vérification visuelle dans la console pour valider les groupes
-print("Vérification des groupes créés pour la régression logistique :")
-print(table(data$tarification_groupe))
-
-
-
-# Fonctionnalité 5 : regressions 
-#---------------------------------------------------------------------
-
-# CRÉATION DE LA VARIABLE "charge_rapide"
-# Selon la matrice de corrélation, on crée une variable binaire :
-# 1 si la puissance est supérieure ou égale à 50 kW (charge rapide), sinon 0.
-data$charge_rapide <- ifelse(data$puissance_nominale >= 50, 1, 0)
-
-
-
-# MODÈLE 1 : RÉGRESSION LINÉAIRE MULTIPLE (Puissance Nominale)
-
-# On prédit la "puissance_nominale" grâce à "charge_rapide" et "nbre_pdc"
-modele_lineaire <- lm(puissance_nominale ~ charge_rapide + nbre_pdc, data = data)
-
-# Affichage des coefficients et de l'efficacité du modèle linéaire
-summary(modele_lineaire)
-
-
-
-# 4. SÉCURISATION ET PRÉPARATION DE LA VARIABLE "tarification"
-
-# Étape A : On force R à essayer de convertir le texte de tarification en vrais chiffres
-tarification_forcee_num <- as.numeric(as.character(data$tarification))
-
-# Étape B : Test de sécurité automatique
-if (sum(!is.na(tarification_forcee_num)) > 0) {
-  
-  # --- SCÉNARIO A : Si la colonne contient des prix ou des chiffres ---
-  # On calcule automatiquement les seuils pour couper équitablement en 3 tiers
-  seuils <- quantile(tarification_forcee_num, probs = c(0, 0.33, 0.66, 1), na.rm = TRUE)
-  
-  # On crée les 3 groupes demandés : bas, modéré, élevé
-  data$tarification_groupe <- cut(tarification_forcee_num, 
-                                  breaks = seuils, 
-                                  labels = c("bas", "modéré", "élevé"), 
-                                  include.lowest = TRUE)
-  
-} else {
-  
-  # --- SCÉNARIO B : Si la colonne contient déjà du texte (ex: "Gratuit", "Payant") ---
-  # On transforme simplement la colonne d'origine en catégories pour R
-  data$tarification_groupe <- as.factor(data$tarification)
-  
-}
-
-# Étape C : Petite vérification visuelle dans la console pour valider les groupes
-print("Vérification des groupes créés pour la régression logistique :")
-print(table(data$tarification_groupe))
-
-
-#-----------------------------------------------------------------------------------
-# 5. MODÈLE 2 : RÉGRESSION LOGISTIQUE MULTINOMIALE (Tarification)
+# -------------------------------------------------------------------
+# 3. SÉCURISATION ET PRÉPARATION DE LA VARIABLE "tarification"
 # -------------------------------------------------------------------
 
-# (Assure-toi d'avoir chargé la librairie nnet pour utiliser multinom)
-# library(nnet)
+# Étape A : Nettoyage du texte pour extraire les chiffres (suppression de " €/kWh")
+# On remplace les virgules par des points pour la conversion décimale
+texte_nettoye <- gsub(",", ".", data$tarification)
+# On supprime tout ce qui n'est pas un chiffre ou un point
+texte_nettoye <- gsub("[^0-9.]", "", texte_nettoye)
 
-# On lance le modèle sur la nouvelle colonne nettoyée "tarification_groupe"
-modele_logistique <- multinom(tarification_groupe ~ puissance_nominale + nbre_pdc, data = data)
+# On force la conversion en numérique maintenant que le texte est propre
+tarification_forcee_num <- as.numeric(texte_nettoye)
 
-# Affichage des coefficients du modèle logistique
+# Étape B : Discrétisation en 3 groupes (Bas, Modéré, Élevé)
+if (sum(!is.na(tarification_forcee_num)) > 0) {
+  
+  # Calcul automatique des seuils pour couper équitablement en 3 tiers
+  seuils <- quantile(tarification_forcee_num, probs = c(0, 0.33, 0.66, 1), na.rm = TRUE)
+  
+  # Création des 3 groupes en gérant les doublons potentiels de seuils avec 'unique'
+  data$tarification_groupe <- cut(tarification_forcee_num, 
+                                  breaks = unique(seuils), 
+                                  labels = c("bas", "modéré", "élevé")[1:(length(unique(seuils))-1)], 
+                                  include.lowest = TRUE)
+  
+} else {
+  # Si la colonne ne contient pas de prix, on la transforme simplement en catégories
+  data$tarification_groupe <- as.factor(data$tarification)
+}
+
+# Étape C : Vérification visuelle
+print("--- Vérification des groupes créés pour la régression logistique ---")
+print(table(data$tarification_groupe))
+
+# -------------------------------------------------------------------
+# 4. MODÈLE 2 : RÉGRESSION LOGISTIQUE MULTINOMIALE (Tarification)
+# -------------------------------------------------------------------
+
+# On s'assure de travailler sur des données sans valeurs manquantes pour la cible
+data_logistique <- subset(data, !is.na(tarification_groupe))
+
+# On lance le modèle sur la nouvelle colonne nettoyée
+modele_logistique <- multinom(tarification_groupe ~ puissance_nominale + nbre_pdc, data = data_logistique)
+
+print("--- Résumé de la régression logistique ---")
 summary(modele_logistique)
 
-
 # -------------------------------------------------------------------
-# 6. ÉVALUATION DU MODÈLE : MATRICE DE CONFUSION
+# 5. ÉVALUATION DU MODÈLE : MATRICE DE CONFUSION
 # -------------------------------------------------------------------
 
-# 1. Générer les prédictions à partir du modèle
-# La fonction predict() va assigner la catégorie la plus probable à chaque ligne
-predictions_logistique <- predict(modele_logistique, newdata = data)
+# Générer les prédictions (la catégorie la plus probable)
+predictions_logistique <- predict(modele_logistique, newdata = data_logistique)
 
-# 2. Créer une matrice de confusion simple (Base R)
-matrice_confusion <- table(Prédiction = predictions_logistique, Réel = data$tarification_groupe)
+# S'assurer que les deux éléments sont des facteurs avec les mêmes niveaux
+predictions_logistique <- factor(predictions_logistique, levels = levels(data_logistique$tarification_groupe))
 
-print("--- Matrice de confusion simple ---")
-print(matrice_confusion)
-
-# 3. Obtenir des métriques détaillées avec 'caret'
-# install.packages("caret") # Décommente cette ligne si caret n'est pas encore installé
-
-
-# Pour utiliser confusionMatrix, il faut s'assurer que les deux variables sont des facteurs
-predictions_logistique <- as.factor(predictions_logistique)
-data$tarification_groupe <- as.factor(data$tarification_groupe)
-
+# Matrice de confusion détaillée avec 'caret'
 print("--- Matrice de confusion détaillée (caret) ---")
-matrice_detaillee <- confusionMatrix(data = predictions_logistique, reference = data$tarification_groupe)
+matrice_detaillee <- confusionMatrix(data = predictions_logistique, reference = data_logistique$tarification_groupe)
 print(matrice_detaillee)
 
-
 # -------------------------------------------------------------------
-# 7. EXPORT DES DONNÉES
+# 6. EXPORT DES DONNÉES
 # -------------------------------------------------------------------
 
-# Exporter le dataframe nettoyé en format CSV pour l'IA
-write.csv(data_cor, file = "donnees_nettoyees.csv", row.names = FALSE)
-write.csv2(data_cor, file = "donnees_nettoyees_excel.csv", row.names = FALSE, fileEncoding = "latin1")
-summary(modele_logistique)
+# Exporter le dataframe finalisé en format CSV (correction du nom de la variable : data au lieu de data_cor)
+write.csv(data, file = "donnees_nettoyees.csv", row.names = FALSE)
+write.csv2(data, file = "donnees_nettoyees_excel.csv", row.names = FALSE, fileEncoding = "latin1")
