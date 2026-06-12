@@ -42,61 +42,35 @@ data <- data[data[["id_pdc_itinerance"]] != "Non concerné", ]
 data <- data[order(data[["date_maj"]], na.last = TRUE), ]
 #arder uniquement la première de chaque id_pdc_itinerance, revoie false si ne la jamais renconter , true si la rencontrer= suppr
 data <- data[!duplicated(data[["id_pdc_itinerance"]]), ]
-data[["coordonneesXY"]] <- NULL
+data[["coordonneesXY"]]= NULL
 
 
 # mots considérés non pertinents
-mots_vides <- c(
+mots<- c(
   "sans", "xx" ,"inconnu","aucune","pas de restriction","aucun","ras","^non$","sans restriction", "inconnue","Inconnu","Accessibilitˇ inconnu","Accessibilit\u008e inconnue","0000", "Accessibilit inconnue","Accessibilit\u0087 inconnue","AccessibilitĂ\u00a9 inconnue","Restriction de gabarit non précisée","restriction gabarit inconnue", "Non concerné","no information","Restriction de gabarit non pr\u008ecis\u008ee","Restriction de gabarit non prÃ©cisÃ©e","restriction gabarit inconnues","accessibilité inconnue","Accessibilité inconnue","Inconnue","NEANT","Néant","non concerné", "Non communiqué","non précisé","non renseigné","Non renseigné","unknown", "n/a", "na", "none", "null", "-", "?", "","/","Non communiqué","Non concerné ","aucune observations","aucune observation"
 )
 
-# Règle de nettoyage de donnée
-nettoyer_texte <- function(colonne_texte) {
-  # Enlève les epaces en trop
-  texte_propre <- str_trim(colonne_texte)
-  
-  # Vérifie si le mot fait parti de la liste ci-dessus
-  if_else(
-    is.element(str_to_lower(texte_propre), mots_vides), 
-    NA_character_, 
-    texte_propre
-  )
+for (col in colnames(data)) {
+  if (is.character(data[[col]])) {
+    x <- str_trim(data[[col]])
+    data[[col]][x %in% mots] = NA
+  }
 }
 
-# Nouveau data
-data <- mutate(
-  # arg 1 : notre jeu de donnée
-  data,
-  
-  # arg 2 : applique la fct de nettoyage au colonne texte
-  across(where(is.character), nettoyer_texte),
-  
-  # arg 3 : Harmonisation des colonnes
-  restriction_gabarit = case_when(
-    
-    # Confirme que la valeur est Na
-    is.na(restriction_gabarit) ~ NA,
-    
-    # Cherche les mots clé et remplace par false
-    str_detect(str_to_lower(restriction_gabarit), "aucune|pas de restriction|aucun|ras|^non$|sans restriction") ~ "FALSE",     
-    
-    # Cherche des chiffres
-    str_detect(restriction_gabarit, "[0-9]") ~ {
-      
-      # Remplace les virgules et ajoute un 'm' derière le chiffre
-      format_standard <- str_replace_all(str_to_lower(restriction_gabarit), "([0-9]+)[,m]([0-9]+)", "\\1.\\2")
-      
-      # Extrait partie numérique
-      valeur_num<- str_extract(format_standard, "[0-9]+(\\.[0-9]+)?")
-      
-      # concaténation du chiffre et du m
-      paste0(valeur_num, "m")
-    },
-    
-    # Pas de changement
-    .default = restriction_gabarit
-  )
-)
+for (i in 1:nrow(data)) {
+  val =data[["restriction_gabarit"]][i]
+  #si la val est NA on passe à la suivante
+  if (!is.na(val)) {
+    #on formate en "X.Xm"
+    if (str_detect(val, "[0-9]")) {
+      #remplace les virgules et ajoute un 'm' derrière le chiffre
+      val_format <- str_replace_all(tolower(val), "([0-9]+)[,m]([0-9]+)", "\\1.\\2")
+      valeur_num <- str_extract(val_format, "[0-9]+(\\.[0-9]+)?")
+      #concaténation du chiffre et du m
+      data[["restriction_gabarit"]][i] <- paste0(valeur_num, "m")
+    }
+  }
+}
 
 # Liste les valeurs uniques
 #lapply(data, unique)
@@ -166,24 +140,23 @@ data[["gratuit"]]= NULL
 
 
 #carte france
-data_sf <- data %>%
-  mutate(
-    consolidated_latitude  = as.numeric(consolidated_latitude),
-    consolidated_longitude = as.numeric(consolidated_longitude)
-  ) %>%
-  #on prend que les lat et long qui existent
-  filter(!is.na(consolidated_latitude), !is.na(consolidated_longitude)) %>%
-  #on convertit le tableau en "Carte" (objet géographique)
-  st_as_sf(coords = c("consolidated_longitude", "consolidated_latitude"), crs = 4326, remove = FALSE)
+#on prend que les lat et long qui existent
+data<- data[!is.na(data[["consolidated_latitude"]]) & !is.na(data[["consolidated_longitude"]]), ]
+
+#on convertit le tableau en "Carte" (objet géographique)
+data_sf <- st_as_sf(data,
+                    coords = c("consolidated_longitude", "consolidated_latitude"),
+                    crs = 4326,
+                    remove = FALSE)
 
 #telecharge le contour de la France + de la Corse
-france_frontiere <- ne_countries(scale = "medium", country = "France", returnclass = "sf") %>%
-  st_transform(crs = 4326) %>%
-  st_crop(xmin = -10, ymin = 40, xmax = 15, ymax = 52)
+france_frontiere <- ne_countries(scale = "medium", country = "France", returnclass = "sf")
+france_frontiere <- st_transform(france_frontiere, crs = 4326)
+france_frontiere <- st_crop(france_frontiere, xmin = -10, ymin = 40, xmax = 15, ymax = 52)
 
 #permet de trier les donnée et de garder celle qui sont dans le contour
-data <- st_filter(data_sf, france_frontiere) %>%
-  st_drop_geometry()
+data <- st_filter(data_sf, france_frontiere)
+data <- st_drop_geometry(data)
 #------------------------------------------------------------------------------
 
 #affichage nbre_pdc
