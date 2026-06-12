@@ -1,17 +1,12 @@
-data <- read.csv("C:/Quentin/Ecole/ISEN/A3/IRVE.csv")
+#data <- read.csv("C:/Quentin/Ecole/ISEN/A3/IRVE.csv")
+#data <- read.csv("C:/Users/hecto/Music/IRVE (1).csv", sep = ",", stringsAsFactors = FALSE)
+data =read.csv("C:/Users/anael/Documents/Isen/IRVE.csv")
 
 # install.packages("leaflet")
 # install.packages("leaflet.extras")
 # install.packages("sf")
 # install.packages("rnaturalearth")
 # install.packages("rnaturalearthdata")
-library(leaflet)
-library(leaflet.extras)
-library(sf)
-library(rnaturalearth)
-library(rnaturalearthdata)
-library(data.table)
-
 install.packages("stringr") 
 install.packages("dplyr")
 install.packages("tidyverse")
@@ -25,15 +20,13 @@ library(ggplot2)
 library(tidyr)
 library(lubridate)
 library(nnet)
+library(leaflet)
+library(leaflet.extras)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(data.table)
 
-
-#suppression
-
-data <- data[data[["id_pdc_itinerance"]] != "Non concerné", ]
-#trier par la plus recente
-data <- data[order(data[["date_maj"]], na.last = TRUE), ]
-#arder uniquement la première de chaque id_pdc_itinerance, revoie false si ne la jamais renconter , true si la rencontrer= suppr
-data <- data[!duplicated(data[["id_pdc_itinerance"]]), ]
 
 
 
@@ -42,9 +35,19 @@ data <- data[!duplicated(data[["id_pdc_itinerance"]]), ]
 # Fonctionnalité 1 Trie
 # ------------------------------------------------------------------------------
 
-# Mots considérés comme non pertinents
+#suppression de ligne
+#https://doc.transport.data.gouv.fr/type-donnees/infrastructures-de-recharge-de-vehicules-electriques-irve/beta-base-nationale-irve-statique
+data <- data[data[["id_pdc_itinerance"]] != "Non concerné", ]
+#trier par la plus recente
+data <- data[order(data[["date_maj"]], na.last = TRUE), ]
+#arder uniquement la première de chaque id_pdc_itinerance, revoie false si ne la jamais renconter , true si la rencontrer= suppr
+data <- data[!duplicated(data[["id_pdc_itinerance"]]), ]
+data[["coordonneesXY"]] <- NULL
+
+
+# mots considérés non pertinents
 mots_vides <- c(
-  "sans", "xx" ,"inconnu", "inconnue","Inconnu","Accessibilitˇ inconnu","Accessibilit\u008e inconnue","0000", "Accessibilit inconnue","Accessibilit\u0087 inconnue","AccessibilitĂ\u00a9 inconnue","Restriction de gabarit non précisée","restriction gabarit inconnue", "Non concerné","no information","Restriction de gabarit non pr\u008ecis\u008ee","Restriction de gabarit non prÃ©cisÃ©e","restriction gabarit inconnues","accessibilité inconnue","Accessibilité inconnue","Inconnue","NEANT","Néant","non concerné", "Non communiqué","non précisé","non renseigné","Non renseigné","unknown", "n/a", "na", "none", "null", "-", "?", "","/","Non communiqué","Non concerné ","aucune observations","aucune observation"
+  "sans", "xx" ,"inconnu","aucune","pas de restriction","aucun","ras","^non$","sans restriction", "inconnue","Inconnu","Accessibilitˇ inconnu","Accessibilit\u008e inconnue","0000", "Accessibilit inconnue","Accessibilit\u0087 inconnue","AccessibilitĂ\u00a9 inconnue","Restriction de gabarit non précisée","restriction gabarit inconnue", "Non concerné","no information","Restriction de gabarit non pr\u008ecis\u008ee","Restriction de gabarit non prÃ©cisÃ©e","restriction gabarit inconnues","accessibilité inconnue","Accessibilité inconnue","Inconnue","NEANT","Néant","non concerné", "Non communiqué","non précisé","non renseigné","Non renseigné","unknown", "n/a", "na", "none", "null", "-", "?", "","/","Non communiqué","Non concerné ","aucune observations","aucune observation"
 )
 
 # Règle de nettoyage de donnée
@@ -72,7 +75,7 @@ data <- mutate(
   restriction_gabarit = case_when(
     
     # Confirme que la valeur est Na
-    is.na(restriction_gabarit) ~ NA_character_,
+    is.na(restriction_gabarit) ~ NA,
     
     # Cherche les mots clé et remplace par false
     str_detect(str_to_lower(restriction_gabarit), "aucune|pas de restriction|aucun|ras|^non$|sans restriction") ~ "FALSE",     
@@ -96,10 +99,7 @@ data <- mutate(
 )
 
 # Liste les valeurs uniques
-lapply(data, unique)
-
-# Visualisation
-View(data)
+#lapply(data, unique)
 
 
 
@@ -109,10 +109,8 @@ for (col in liste_bool) {
   #evite les chiffre
   if (is.character(data[[col]])){  
     
-    
     t_minus =tolower(data[[col]])
     data[[col]][t_minus == "true"] = "1"
-    
     # Oremplace 
     data[[col]][t_minus == "false"] = "0" }
   
@@ -128,7 +126,6 @@ for (col in colnames(data)) {
 
 data$condition_acces <- ifelse(tolower(data$condition_acces) == "accès réservé", "accès réservé", "accès libre")
 data[["implantation_station"]][data[["implantation_station"]] == "Parking priv\u008e \u0088 usage public"] = "Parking privé à usage public"
-
 data[["implantation_station"]][data[["implantation_station"]] == "Parking priv\u008e r\u008eserv\u008e \u0088 la client\u008fle"] = "Parking privé réservé à la clientèle"
 #https://www.bppulse.com/fr-fr/centre-de-contenu/tout-savoir-sur-la-charge-rapide
 #https://www.automobile-propre.com/dossiers/borne-de-recharge-electrique-le-guide-complet-2024/
@@ -136,32 +133,6 @@ data[["puissance_nominale"]][data[["puissance_nominale"]] < 1]= NA
 data[["puissance_nominale"]][data[["puissance_nominale"]] >400 ] = NA
 
 
-
-
-
-#data <- read.csv("C:/Users/hecto/Music/IRVE (1).csv", sep = ",", stringsAsFactors = FALSE)
-
-# 2. Filtrage intelligent par "Blocs Géographiques" (Métropole + Corse)
-data_metropole_propre <- data %>%
-  mutate(
-    consolidated_latitude = as.numeric(consolidated_latitude),
-    consolidated_longitude = as.numeric(consolidated_longitude)
-  ) %>%
-  filter(
-    # ZONE 1 : Cœur et Ouest de la France
-    (consolidated_latitude >= 42.3 & consolidated_latitude <= 51.1 & 
-       consolidated_longitude >= -5.2 & consolidated_longitude <= 6.0) |
-      
-      # ZONE 2 : Est de la France (Alsace / Alpes)
-      (consolidated_latitude >= 44.5 & consolidated_latitude <= 49.5 & 
-         consolidated_longitude > 6.0 & consolidated_longitude <= 7.5) |
-      
-      # ZONE 3 : Corse
-      (consolidated_latitude >= 41.3 & consolidated_latitude <= 43.1 & 
-         consolidated_longitude >= 8.5 & consolidated_longitude <= 9.6)
-  )
-
-View(data_metropole_propre)
 
 #tarification 
 
@@ -191,14 +162,13 @@ data[["tarification"]] <- data[["tarification"]] |>
   str_trim() |>
   sapply(extraire_prix_kwh, USE.NAMES = FALSE) 
 #str_c(" €/kWh")
-
+data[["gratuit"]]= NULL
 
 
 
 #------------------------------------------------------------------------------
 
 #affichage nbre_pdc
-
 
 data_bar <- data |>
   filter(!is.na(nbre_pdc)) |>
@@ -537,54 +507,39 @@ print("Les 4 graphiques ont été générés et sauvegardés en .png dans votre 
 #heatmap et clustering
 
 sf_use_s2(FALSE)
-# 1. Chargement des données
-data <- fread("C:/Users/hecto/Music/IRVE (1).csv", data.table = FALSE)
 
 # 2. Conversion en GPS
-data_sf <- data %>%
-  mutate(
-    consolidated_latitude  = as.numeric(consolidated_latitude),
-    consolidated_longitude = as.numeric(consolidated_longitude)
-  ) %>%
-  filter(!is.na(consolidated_latitude), !is.na(consolidated_longitude)) %>%
-  st_as_sf(coords = c("consolidated_longitude", "consolidated_latitude"), crs = 4326, remove = FALSE)
+data[["consolidated_latitude"]]  <- as.numeric(data[["consolidated_latitude"]])
+data[["consolidated_longitude"]] <- as.numeric(data[["consolidated_longitude"]])
+data <- data[!is.na(data[["consolidated_latitude"]]) & !is.na(data[["consolidated_longitude"]]), ]
+
+data<- st_as_sf(data,coords = c("consolidated_longitude", "consolidated_latitude"),crs = 4326,remove = FALSE)
 
 # 3. Télécharge le contour, le REND VALIDE (anti-bug), puis le découpe sur la métropole
-france_frontiere <- ne_countries(scale = "medium", country = "France", returnclass = "sf") %>%
-  st_transform(crs = 4326) %>%
-  st_make_valid() %>% # <-- Cette ligne répare les frontières et empêche le crash
-  st_crop(st_bbox(c(xmin = -10, ymin = 40, xmax = 15, ymax = 52), crs = 4326))
+france_frontiere = ne_countries(scale = "medium", country = "France", returnclass = "sf")
+france_frontiere = st_transform(france_frontiere, crs = 4326)
+france_frontiere = st_make_valid(france_frontiere)
+france_frontiere = st_crop(france_frontiere, st_bbox(c(xmin = -10, ymin = 40, xmax = 15, ymax = 52), crs = 4326))
 
 # 4. Tri des données (conserve uniquement ce qui intersecte la France)
-data_metropole_propre <- st_filter(data_sf, france_frontiere) %>%
-  st_drop_geometry()
+data= st_filter(data_sf, france_frontiere)
+data_metropole_propre = st_drop_geometry(data_sf)
 
 # 5. Création de la carte Heatmap
-carte_heatmap <- leaflet(data_metropole_propre) %>%
-  addTiles() %>% 
-  setView(lng = 2.2137, lat = 46.2276, zoom = 6) %>%
+carte_heatmap = leaflet(data_metropole_propre)
+carte_heatmap = addTiles(carte_heatmap)
+carte_heatmap = setView(carte_heatmap, lng = 2.2137, lat = 46.2276, zoom = 6) 
+
+# Trace le contour de la France
+carte_heatmap <- addPolygons(carte_heatmap,data = france_frontiere,fill = FALSE,color = "#2c3e50",weight = 2,opacity = 1)
   
-  addPolygons( # Trace le contour de la France
-    data = france_frontiere,
-    fill = FALSE,            
-    color = "#2c3e50",      
-    weight = 2,             
-    opacity = 1             
-  ) %>%
+# Couche de chaleur
+carte_heatmap <- addHeatmap(carte_heatmap,lng = ~consolidated_longitude,lat = ~consolidated_latitude,blur = 18,max = 0.08,radius = 12)
+    
   
-  addHeatmap( # Couche de chaleur
-    lng = ~consolidated_longitude, 
-    lat = ~consolidated_latitude,
-    blur = 18,             
-    max = 0.08,             
-    radius = 12  
-  ) %>%
-  
-  addMarkers( # Marqueurs regroupés (clusters)
-    lng = ~consolidated_longitude, 
-    lat = ~consolidated_latitude,
-    clusterOptions = markerClusterOptions() 
-  )
+# Marqueurs regroupés (clusters)
+carte_heatmap <- addMarkers(carte_heatmap,lng = ~consolidated_longitude,lat = ~consolidated_latitude, clusterOptions = markerClusterOptions())
+    
 
 # 6. Affichage final
 carte_heatmap
@@ -594,15 +549,21 @@ carte_heatmap
 # ---------------------------------------------------------------------------------
 # fonction 4 Bivariée
 # --------------------------------------------------------------------------------------------
+#2 variables numériques = cor.test(spearman, ne suit pas une loi normal)
+#1 quali (2 groupes) vs 1 numérique =wilcox.test
+#1 quali (3+ groupes) vs 1 numérique =kruskal.test
+#2 variables qualitatives =chisq.test + cramer_v
 
+
+#data sans vide
 data_cor <- data[!is.na(data[["consolidated_latitude"]])  &
                    !is.na(data[["consolidated_longitude"]]) &
-                   !is.na(data[["nbre_pdc"]])               &
-                   !is.na(data[["puissance_nominale"]])      &
-                   !is.na(data[["implantation_station"]])    &
-                   !is.na(data[["raccordement"]])            &
-                   !is.na(data[["date_mise_en_service"]])            &
-                   !is.na(data[["tarification"]])            , ]
+                   !is.na(data[["nbre_pdc"]])&
+                   !is.na(data[["puissance_nominale"]])&
+                   !is.na(data[["implantation_station"]]) &
+                   !is.na(data[["raccordement"]])  &
+                   !is.na(data[["date_mise_en_service"]]) &
+                   !is.na(data[["tarification"]]) , ]
 data_cor[["annee"]]        <- as.numeric(format(as.Date(data_cor[["date_mise_en_service"]]), "%Y"))
 data_cor[["charge_rapide"]] <- as.numeric(data_cor[["puissance_nominale"]] > 22)
 
@@ -615,12 +576,11 @@ cor.test(data_cor[["consolidated_longitude"]], data_cor[["puissance_nominale"]])
 #variable quanti
 # PUISSANCE VS PRIX tarification 
 cor.test(data_cor[["tarification"]], data_cor[["puissance_nominale"]], method = "spearman")
-
-# Visualisation
+#visu
 ggplot(data_cor, aes(x = as.factor(charge_rapide), y = tarification)) +
   geom_boxplot(fill = c("lightblue", "pink")) +
   labs(title = "Puissance vs Tarification",
-       x = "Charge rapide (0=Non, 1=Oui)", y = "Tarification (€/kWh)")
+       x = "Charge rapide (0=Non, 1=Oui)", y = "Tarification")
 
 # LOCA {(xy)} VS EQUIPEMENT nbre_pdc
 
@@ -640,9 +600,7 @@ ggplot(data_cor, aes(x = consolidated_longitude, y = consolidated_latitude, colo
 #IMPLANTATION vs nb pc
 
 # Discrétisation nbre_pdc pour chi2 + mosaicplot
-data_cor[["taille_station"]] <- cut(data_cor[["nbre_pdc"]],
-                                    breaks = c(0, 1, 4, Inf),
-                                    labels = c("Petite (1 PDC)", "Moyenne (2-4 PDC)", "Grande (5+ PDC)"))
+data_cor[["taille_station"]] <- cut(data_cor[["nbre_pdc"]],breaks = c(0, 1, 4, Inf),labels = c("Petite (1 PDC)", "Moyenne (2-4 PDC)", "Grande (5+ PDC)"))
 
 data_cor[["implantation_simple"]] <- data_cor[["implantation_station"]]
 data_cor[["implantation_simple"]][data_cor[["implantation_station"]] == "Parking privé réservé à la clientèle"] <- "Autre"
@@ -653,13 +611,7 @@ print(tab2)
 chisq.test(tab2)
 
 # V de Cramer : intensité de l'association, le chi2 dit juste y a  un lien ? (oui/non via p-value) V de Cramér= ce lien est fort ou faible ? 
-cramer_v <- function(tbl) {
-  chi2 <- chisq.test(tbl)$statistic
-  n    <- sum(tbl)
-  k    <- min(nrow(tbl), ncol(tbl))
-  sqrt(chi2 / (n * (k - 1)))
-}
-
+cat("V de Cramér :", round(sqrt(chisq.test(tab2)$statistic / (sum(tab2) * (min(nrow(tab2), ncol(tab2)) - 1))), 3), "\n")
 
 
 ggplot(data_cor, aes(x = implantation_station, y = nbre_pdc)) +
@@ -670,14 +622,10 @@ ggplot(data_cor, aes(x = implantation_station, y = nbre_pdc)) +
 
 
 # IMPLANTATION VS PUISSANCE
-# Kruskal-Wallis (> 2 groupes, non paramétrique)
+# Kruskal-Wallis ( non paramétrique)
 kruskal.test(puissance_nominale ~ implantation_station, data = data_cor)
 
-ggplot(data_cor, aes(x = implantation_station, y = puissance_nominale)) +
-  stat_summary(fun = mean, geom = "point", size = 4, color = "blue") +
-  stat_summary(fun.data = mean_cl_normal, geom = "errorbar", width = 0.2, color = "red") +
-  labs(title = "Implantation vs Puissance (moyenne ± IC)",
-       x = "Implantation", y = "Puissance (kW)") +
+ggplot(data_cor, aes(x = implantation_station, y = puissance_nominale)) +stat_summary(fun = mean, geom = "point", size = 4, color = "blue") +stat_summary(fun.data = mean_cl_normal, geom = "errorbar", width = 0.2, color = "red") + labs(title = "Implantation vs Puissance (moyenne ± IC)", x = "Implantation", y = "Puissance (kW)") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 # RACCORDEMENT VS PUISSANCE
@@ -685,12 +633,10 @@ ggplot(data_cor, aes(x = implantation_station, y = puissance_nominale)) +
 # Wilcoxon (2 groupes, non paramétrique )
 wilcox.test(puissance_nominale ~ raccordement, data = data_cor)
 
-
 ggplot(data_cor, aes(x = raccordement, y = puissance_nominale)) +
   geom_bar(stat = "summary", fun = "mean", fill = c("lightblue", "pink")) +
   labs(title = "Raccordement vs Puissance moyenne",
-       x = "Raccordement", y = "Puissance moyenne (kW)")
-
+       x = "Raccordement", y = "Puissance moyenne ")
 
 #implantation vs tarif
 kruskal.test(tarification ~ implantation_station, data = data_cor)
@@ -708,13 +654,13 @@ wilcox.test(tarification ~ raccordement, data = data_cor)
 ggplot(data_cor, aes(x = raccordement, y = tarification)) +
   geom_boxplot(fill = c("lightblue", "pink")) +
   labs(title = "Raccordement vs Tarification",
-       x = "Raccordement", y = "Tarification (€/kWh)")
+       x = "Raccordement", y = "Tarification")
 
 #annee vs nb station
 ggplot(data_cor, aes(x = annee)) +
   geom_bar(fill = "lightblue") +
   labs(title = "Nombre de stations mises en service par année",
-       x = "Année", y = "Nombre de stations") +
+       x = "Annee", y = "Nombre de stations") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
@@ -723,24 +669,16 @@ ggplot(data_cor, aes(x = annee)) +
 tab3 <- table(data_cor[["implantation_station"]], data_cor[["raccordement"]])
 print(tab3)
 chisq.test(tab3)
-mosaicplot(tab3, main = "Implantation vs Raccordement",
-           color = c("lightblue", "pink"), las = 2)
+cat("V de Cramér :", round(sqrt(chisq.test(tab3)$statistic / (sum(tab3) * (min(nrow(tab3), ncol(tab3)) - 1))), 3), "\n")
+mosaicplot(tab3, main = "Implantation vs Raccordement",color = c("lightblue", "pink"), las = 2)
 
-mosaicplot(tab2, main = "Implantation vs Taille de station",
-           color = c("blue", "violet", "pink"), las = 2)
+mosaicplot(tab2, main = "Implantation vs Taille de station", color = c("blue", "violet", "pink"), las = 2)
 
 
 #matrice
-data_matrice <- data_cor[, c("puissance_nominale", "nbre_pdc", "tarification",
-                             "consolidated_latitude", "consolidated_longitude",
-                             "charge_rapide", "annee")]
-
+data_matrice <- data_cor[, c("puissance_nominale", "nbre_pdc", "tarification","consolidated_latitude", "consolidated_longitude","charge_rapide", "annee")]
 matrice_cor <- cor(data_matrice, method = "spearman")
-
-corrplot(matrice_cor, method = "color", type = "full",
-         addCoef.col = "black", tl.col = "black", tl.srt = 45,
-         tl.cex = 0.7,
-         title = "Matrice de corrélation", mar = c(0, 0, 2, 0))
+corrplot(matrice_cor, method = "color", type = "full",addCoef.col = "black", tl.col = "black", tl.srt = 45,tl.cex = 0.7, title = "Matrice de corrélation", mar = c(0, 0, 2, 0))
 
 
 
@@ -798,7 +736,7 @@ print(table(data$tarification_groupe))
 
 
 #-----------------------------------------------------------------------------------
-# 5. MODÈLE 2 : RÉGRESSION LOGISTIQUE MULTINOMIALE (Tarification)
+#RÉGRESSION LOGISTIQUE MULTINOMIALE (Tarification)
 # -------------------------------------------------------------------
 
 # On lance le modèle sur la nouvelle colonne nettoyée "tarification_groupe"
