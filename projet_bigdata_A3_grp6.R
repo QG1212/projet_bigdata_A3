@@ -693,10 +693,10 @@ matrice_cor <- cor(data_matrice, method = "spearman")
 corrplot(matrice_cor, method = "color", type = "full",addCoef.col = "black", tl.col = "black", tl.srt = 45,tl.cex = 0.7, title = "Matrice de corrélation", mar = c(0, 0, 2, 0))
 
 
-# ===================================================================
+#---------------------------------------------------------------------
 # FONCTIONNALITÉ 5 : RÉGRESSIONS ET PRÉDICTIONS
-# ===================================================================
-
+#--------------------------------------------------------------------
+#code: quentin +gemini 
 # Chargement des librairies nécessaires
 # install.packages("nnet")
 # install.packages("caret")
@@ -706,7 +706,7 @@ library(caret)
 # -------------------------------------------------------------------
 # 1. CRÉATION DE LA VARIABLE "charge_rapide"
 # -------------------------------------------------------------------
-# /!\ ATTENTION BIAIS : Créer cette variable à partir de la puissance nominale 
+# y'a des risque ATTENTION BIAIS : Créer cette variable à partir de la puissance nominale 
 # puis l'utiliser pour prédire cette même puissance nominale (Modèle 1) 
 # va artificiellement gonfler la performance de la régression.
 data$charge_rapide <- ifelse(data$puissance_nominale >= 50, 1, 0)
@@ -724,48 +724,60 @@ summary(modele_lineaire)
 # 3. SÉCURISATION ET PRÉPARATION DE LA VARIABLE "tarification"
 # -------------------------------------------------------------------
 
-# Étape A : Nettoyage du texte pour extraire les chiffres (suppression de " €/kWh")
-# On remplace les virgules par des points pour la conversion décimale
-texte_nettoye <- gsub(",", ".", data$tarification)
-# On supprime tout ce qui n'est pas un chiffre ou un point
-texte_nettoye <- gsub("[^0-9.]", "", texte_nettoye)
+# --- Étape A : Nettoyage et conversion numérique ---
+# Gestion du format européen (virgule décimale) et suppression des unités (€/kWh)
+tarification_num <- data$tarification |>
+  gsub(pattern = ",", replacement = ".", x = _) |>
+  gsub(pattern = "[^0-9.]", replacement = "", x = _) |>
+  as.numeric()
 
-# On force la conversion en numérique maintenant que le texte est propre
-tarification_forcee_num <- as.numeric(texte_nettoye)
+# --- Étape B : Discrétisation en 3 tiers (bas / modéré / élevé) ---
+# On utilise les terciles pour un découpage équilibré
+n_valides <- sum(!is.na(tarification_num))
 
-# Étape B : Discrétisation en 3 groupes (Bas, Modéré, Élevé)
-if (sum(!is.na(tarification_forcee_num)) > 0) {
+if (n_valides > 0) {
   
-  # Calcul automatique des seuils pour couper équitablement en 3 tiers
-  seuils <- quantile(tarification_forcee_num, probs = c(0, 0.33, 0.66, 1), na.rm = TRUE)
+  seuils <- quantile(tarification_num, probs = c(0, 1/3, 2/3, 1), na.rm = TRUE)
+  seuils_uniques <- unique(seuils)
+  n_groupes <- length(seuils_uniques) - 1
   
-  # Création des 3 groupes en gérant les doublons potentiels de seuils avec 'unique'
-  data$tarification_groupe <- cut(tarification_forcee_num, 
-                                  breaks = unique(seuils), 
-                                  labels = c("bas", "modéré", "élevé")[1:(length(unique(seuils))-1)], 
-                                  include.lowest = TRUE)
+  if (n_groupes < 2) {
+    stop("Impossible de créer au moins 2 groupes de tarification : vérifier la variance des données.")
+  }
+  
+  labels_groupes <- c("bas", "modéré", "élevé")[seq_len(n_groupes)]
+  
+  data$tarification_groupe <- cut(
+    tarification_num,
+    breaks       = seuils_uniques,
+    labels       = labels_groupes,
+    include.lowest = TRUE
+  )
   
 } else {
-  # Si la colonne ne contient pas de prix, on la transforme simplement en catégories
+  # Fallback : la colonne ne contient pas de prix numériques
+  warning("Aucune valeur numérique extraite de 'tarification'. Conversion directe en facteur.")
   data$tarification_groupe <- as.factor(data$tarification)
 }
 
-# Étape C : Vérification visuelle
-print("--- Vérification des groupes créés pour la régression logistique ---")
-print(table(data$tarification_groupe))
-
+cat("\n=== DISTRIBUTION DES GROUPES DE TARIFICATION ===\n")
+print(table(data$tarification_groupe, useNA = "ifany"))
 # -------------------------------------------------------------------
 # 4. MODÈLE 2 : RÉGRESSION LOGISTIQUE MULTINOMIALE (Tarification)
 # -------------------------------------------------------------------
 
-# On s'assure de travailler sur des données sans valeurs manquantes pour la cible
 data_logistique <- subset(data, !is.na(tarification_groupe))
+data_logistique$tarification_groupe <- droplevels(data_logistique$tarification_groupe)
 
-# On lance le modèle sur la nouvelle colonne nettoyée
-modele_logistique <- multinom(tarification_groupe ~ puissance_nominale + nbre_pdc, data = data_logistique)
+# Entraînement du modèle
+modele_logistique <- multinom(
+  tarification_groupe ~ puissance_nominale + nbre_pdc,
+  data  = data_logistique,
+  trace = FALSE   # supprime les messages d'itération de nnet
+)
 
-print("--- Résumé de la régression logistique ---")
-summary(modele_logistique)
+cat("\n=== RÉSUMÉ : RÉGRESSION LOGISTIQUE MULTINOMIALE ===\n")
+print(summary(modele_logistique))
 # -------------------------------------------------------------------
 # 5. ÉVALUATION DU MODÈLE : MATRICE DE CONFUSION
 # -------------------------------------------------------------------
