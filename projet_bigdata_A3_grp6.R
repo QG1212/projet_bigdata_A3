@@ -165,7 +165,25 @@ data[["tarification"]] <- data[["tarification"]] |>
 data[["gratuit"]]= NULL
 
 
+#carte france
+data_sf <- data %>%
+  mutate(
+    consolidated_latitude  = as.numeric(consolidated_latitude),
+    consolidated_longitude = as.numeric(consolidated_longitude)
+  ) %>%
+  #on prend que les lat et long qui existent
+  filter(!is.na(consolidated_latitude), !is.na(consolidated_longitude)) %>%
+  #on convertit le tableau en "Carte" (objet géographique)
+  st_as_sf(coords = c("consolidated_longitude", "consolidated_latitude"), crs = 4326, remove = FALSE)
 
+#telecharge le contour de la France + de la Corse
+france_frontiere <- ne_countries(scale = "medium", country = "France", returnclass = "sf") %>%
+  st_transform(crs = 4326) %>%
+  st_crop(xmin = -10, ymin = 40, xmax = 15, ymax = 52)
+
+#permet de trier les donnée et de garder celle qui sont dans le contour
+data <- st_filter(data_sf, france_frontiere) %>%
+  st_drop_geometry()
 #------------------------------------------------------------------------------
 
 #affichage nbre_pdc
